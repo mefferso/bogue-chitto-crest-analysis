@@ -79,7 +79,7 @@ if not keys:
             parser.feed(response.text)
             for href in parser.hrefs:
                 filename = href.rsplit("/", 1)[-1]
-                match = re.fullmatch(r"CREST_MAXUNITSTREAMFLOW_00\\.00_(2026\\d{4})-(\\d{6})\\.grib2\\.gz", filename)
+                match = re.fullmatch(r"CREST_MAXUNITSTREAMFLOW_00\.00_(2026\d{4})-(\d{6})\.grib2\.gz", filename)
                 if not match:
                     continue
                 ts = datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
