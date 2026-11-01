@@ -35,6 +35,16 @@ def discover(s3):
                 ts = datetime.strptime("".join(m.groups()), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
                 if START <= ts <= END:
                     keys.append((ts, key))
+    if not keys:
+        print("No matching CREST keys. Checking available NOAA S3 archive prefixes:", flush=True)
+        for prefix in ("CONUS/", "CONUS/FLASH_", "CONUS/FLASH_CREST_"):
+            try:
+                response = s3.list_objects_v2(Bucket="noaa-mrms-pds", Prefix=prefix, Delimiter="/", MaxKeys=1000)
+                names = [e["Prefix"] for e in response.get("CommonPrefixes", [])]
+                samples = [e["Key"] for e in response.get("Contents", [])[:5]]
+                print(json.dumps({"prefix":prefix,"subdirectories":names[:80],"sample_objects":samples,"truncated":response.get("IsTruncated",False)}), flush=True)
+            except Exception as exc:
+                print(f"Archive diagnostics failed for {prefix}: {exc}", flush=True)
     return sorted(set(keys))
 
 county_geojson = requests.get(
@@ -47,7 +57,7 @@ county = shape(feature["geometry"])
 s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 keys = discover(s3)
 if not keys:
-    raise SystemExit("No archived CREST files found. Check S3 product paths; do not publish fabricated data.")
+    raise SystemExit("No archived CREST keys at documented product/date prefixes. Review archive diagnostics above: the historical bucket may not store FLASH CREST; do not publish fabricated data.")
 print("Found", len(keys), "source files", flush=True)
 rows, frames, source_keys = [], [], []
 mask = latcut = loncut = area = None
