@@ -2,6 +2,7 @@
 import csv, gzip, json, re, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urljoin
 import boto3, cfgrib, numpy as np, requests
 from botocore import UNSIGNED
 from botocore.config import Config
@@ -55,9 +56,40 @@ county_geojson.raise_for_status()
 feature = next(f for f in county_geojson.json()["features"] if str(f.get("id")) == "28109")
 county = shape(feature["geometry"])
 s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-keys = discover(s3)
+keys = [("s3", ts, key) for ts, key in discover(s3)]
 if not keys:
-    raise SystemExit("No archived CREST keys at documented product/date prefixes. Review archive diagnostics above: the historical bucket may not store FLASH CREST; do not publish fabricated data.")
+    # Iowa State's historical MRMS archive uses a different path and filename.
+    # Retain source-specific provenance; never substitute another FLASH product.
+    from html.parser import HTMLParser
+    class ArchiveLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hrefs = []
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.hrefs.extend(value for name, value in attrs if name == "href" and value)
+
+    for day in ("2026/10/31", "2026/11/01"):
+        base = f"https://mtarchive.geol.iastate.edu/{day}/mrms/ncep/FLASH/CREST_MAXUNITSTREAMFLOW/"
+        print("Checking Iowa State historical archive:", base, flush=True)
+        try:
+            response = requests.get(base, timeout=60)
+            response.raise_for_status()
+            parser = ArchiveLinks()
+            parser.feed(response.text)
+            for href in parser.hrefs:
+                filename = href.rsplit("/", 1)[-1]
+                match = re.fullmatch(r"CREST_MAXUNITSTREAMFLOW_00\.00_(2026\d{4})-(\d{6})\.grib2\.gz", filename)
+                if not match:
+                    continue
+                ts = datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                if START <= ts <= END:
+                    keys.append(("iem", ts, urljoin(base, href)))
+        except requests.RequestException as exc:
+            print(f"Iowa State directory unavailable: {exc}", flush=True)
+if not keys:
+    raise SystemExit("No exact-product CREST files found at NOAA S3 or Iowa State archive for the requested UTC interval. No analysis published.")
+keys = sorted(set(keys), key=lambda entry: entry[1])
 print("Found", len(keys), "source files", flush=True)
 rows, frames, source_keys = [], [], []
 mask = latcut = loncut = area = None
@@ -65,8 +97,14 @@ peak_value, peak_timestamp, peak_point = -np.inf, None, None
 event_max = None
 with tempfile.TemporaryDirectory() as temp:
     grib = Path(temp) / "sample.grib2"
-    for i, (ts, key) in enumerate(keys):
-        grib.write_bytes(gzip.decompress(s3.get_object(Bucket="noaa-mrms-pds", Key=key)["Body"].read()))
+    for i, (source, ts, key) in enumerate(keys):
+        if source == "s3":
+            compressed = s3.get_object(Bucket="noaa-mrms-pds", Key=key)["Body"].read()
+        else:
+            response = requests.get(key, timeout=120)
+            response.raise_for_status()
+            compressed = response.content
+        grib.write_bytes(gzip.decompress(compressed))
         ds = cfgrib.open_dataset(str(grib), indexpath="")
         try:
             var = next(iter(ds.data_vars.values()))
@@ -107,7 +145,7 @@ with tempfile.TemporaryDirectory() as temp:
             rows.append(row)
             # Compact nested raster; null means outside county or missing (not zero).
             frames.append([[round(float(v), 1) if np.isfinite(v) else None for v in line] for line in good])
-            source_keys.append(key)
+            source_keys.append(f"{source}:{key}")
             if (i+1)%10 == 0: print("Processed", i+1, "/", len(keys), flush=True)
         finally:
             ds.close()
@@ -119,8 +157,8 @@ with (OUT/"timeseries.csv").open("w",newline="") as f:
     w.writeheader(); w.writerows(rows)
 ever = {str(l): round(float(area[event_max >= l].sum()), 2) for l in LIMITS}
 summary = {
-    "status":"verified-from-archive", "product": PRODUCT, "source":"NOAA MRMS public AWS S3",
-    "source_bucket":"noaa-mrms-pds", "source_keys": source_keys,
+    "status":"processed-from-archive", "product": PRODUCT, "source":"NOAA MRMS public AWS S3 or Iowa State historical MRMS archive",
+    "source_keys": source_keys,
     "units":"cfs/mi²", "grids_analyzed":len(rows),
     "first_utc":rows[0]["utc"], "last_utc":rows[-1]["utc"],
     "peak_cfs_mi2":round(peak_value, 2), "peak_time_utc":peak_timestamp,
