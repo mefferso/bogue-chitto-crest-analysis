@@ -24,9 +24,11 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <main><aside>
 <div id="status">Loading archived data…</div>
 <div class="stat"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
-<div class="panel"><label for="mode">Map layer</label>
+<div class="panel"><label for="product">Product</label><select id="product"><option value="crest">FLASH CREST</option><option value="rainfall">MRMS Rainfall</option></select></div>
+<div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
 <select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
 <div class="panel"><label for="grayOpacity">Gray background opacity: <output id="grayOpacityValue" for="grayOpacity">45%</output></label><input id="grayOpacity" type="range" min="0" max="100" step="5" value="45" aria-label="Opacity of gray low-value CREST cells"><small>Only changes the gray 0–199 cfs/mi² cells; colored CREST pixels are unaffected.</small></div>
+</div><div id="rainControls" hidden><div class="panel"><label for="rainMode">Rainfall map layer</label><select id="rainMode"><option value="cumulative">Event accumulation through selected time</option><option value="one_hour">Rolling 1-hour rainfall</option><option value="three_hour">Rolling 3-hour rainfall</option></select></div><div class="stat"><span>Maximum event rainfall</span><strong id="rainEvent">—</strong><small>inches anywhere in county</small></div><div class="stat"><span>Maximum rolling 1-hour rainfall</span><strong id="rain1">—</strong><small id="rain1Time">—</small></div><div class="stat"><span>Maximum rolling 3-hour rainfall</span><strong id="rain3">—</strong><small id="rain3Time">—</small></div><div class="stat"><span>Peak at selected time / selected rainfall mode</span><strong id="rainCurrent">—</strong><small>inches anywhere in county</small></div><div class="panel"><b>County-maximum rainfall through time</b><div id="rainChart" style="overflow-x:auto"></div><small>County maximum at each ending time; not a single fixed observation point.</small></div><div class="panel"><b>Rainfall (inches)</b><div id="rainLegend" class="legend"></div></div><p>Hourly MRMS MultiSensor QPE Pass 2 (estimated, not a rain gauge). Three-hour totals are only available after three complete hourly intervals.</p></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
@@ -48,6 +50,65 @@ const $=id=>document.getElementById(id);
 const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:1});
 const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
 let data,layer=L.layerGroup().addTo(map),grayLayer=L.layerGroup().addTo(map);
+let rainData=null,rainLoading=false;
+const rainBins=[0,0.1,0.25,0.5,1,2,3,5,8,12];
+const rainColors=['#a1aab5','#99dce0','#52c7d1','#36ad64','#c6cc32','#f2ae32','#f66c3d','#db307b','#9927a8','#5622aa'];
+const rainColor=v=>{let i=0;for(let k=0;k<rainBins.length;k++)if(v>=rainBins[k])i=k;return rainColors[i]};
+$('rainLegend').innerHTML=rainBins.map((n,i)=>'<span class="swatch" style="background:'+rainColors[i]+'"></span>'+n).join(' ');
+function rainfallChart(){
+ const rows=rainData.times, W=560,H=190,pad=34;
+ const max=Math.max(1,...rows.map(r=>r.max_cumulative));
+ const x=i=>pad+i*(W-2*pad)/Math.max(1,rows.length-1);
+ const y=v=>H-pad-v/max*(H-2*pad);
+ const series=[['max_cumulative','#56caff'],['max_1h','#f3b843'],['max_3h','#ed71bd']];
+ const paths=series.map(([key,color])=>{
+  let segments=[],current=[];
+  rows.forEach((r,i)=>{if(r[key]===null){if(current.length)segments.push(current);current=[]}else current.push((current.length?'L':'M')+x(i).toFixed(1)+','+y(r[key]).toFixed(1))});
+  if(current.length)segments.push(current);
+  return '<path d="'+segments.map(a=>a.join(' ')).join(' ')+'" stroke="'+color+'" fill="none" stroke-width="2"/>';
+ }).join('');
+ $('rainChart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="County maximum cumulative, one-hour and three-hour rainfall, inches" style="width:100%;min-width:280px"><path d="M'+pad+' '+pad+'V'+(H-pad)+'H'+(W-pad)+'" fill="none" stroke="#71829a"/><text x="4" y="18" fill="#d5e2f4" font-size="12">'+max.toFixed(1)+' in</text>'+paths+'</svg><div class="legend"><span style="color:#56caff">● Cumulative</span> <span style="color:#f3b843">● 1-hour</span> <span style="color:#ed71bd">● 3-hour</span></div>';
+}
+function drawRain(){
+ if(!rainData)return;
+ const ix=Number($('time').value),mode=$('rainMode').value,frame=rainData.frames[mode][ix];
+ layer.clearLayers();grayLayer.clearLayers();
+ if(frame){
+ const dl=rainData.dlat/2,dy=rainData.dlon/2;
+ for(let r=0;r<frame.length;r++)for(let c=0;c<frame[r].length;c++){
+   const v=frame[r][c];if(v===null)continue;
+   const lat=rainData.latitudes[r],lon=rainData.longitudes[c];
+   const cell=L.rectangle([[lat-dl,lon-dy],[lat+dl,lon+dy]],{stroke:false,fillColor:rainColor(v),fillOpacity:v===0?0.12:0.84,interactive:true});
+   cell.bindTooltip(fmt(v)+' inches');cell.addTo(layer);
+ }}
+ const row=rainData.times[ix];
+ $('rainCurrent').textContent=fmt(row[{cumulative:'max_cumulative',one_hour:'max_1h',three_hour:'max_3h'}[mode]])+' in';
+ $('timeLabel').textContent=local(row.utc)+' · hourly ending time'+(frame?'':' · 3-hour window incomplete');
+ $('time').disabled=false;$('prev').disabled=ix===0;$('next').disabled=ix===rainData.times.length-1;
+}
+function chooseProduct(){
+ const rain=$('product').value==='rainfall';
+ $('crestControls').hidden=rain;$('rainControls').hidden=!rain;
+ $('grayOpacity').closest('.panel').hidden=rain;
+ $('time').max=rain?(rainData?rainData.times.length-1:0):(data?data.times.length-1:0);
+ $('time').disabled=rain?!rainData:!data;
+ if(rain&&!rainData&&!rainLoading){
+  rainLoading=true;$('status').textContent='Loading historical rainfall…';
+  fetch('data/rainfall.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('MRMS rainfall archive not processed. Run the separate rainfall workflow.');return r.json()}).then(d=>{
+   rainData=d;rainLoading=false;$('time').max=d.times.length-1;$('time').value=d.times.length-1;
+   $('rainEvent').textContent=fmt(d.summary.max_event_inches)+' in';
+   $('rain1').textContent=fmt(d.summary.peak_1h_inches)+' in';$('rain1Time').textContent=local(d.summary.peak_1h_utc);
+   $('rain3').textContent=fmt(d.summary.peak_3h_inches)+' in';$('rain3Time').textContent=local(d.summary.peak_3h_utc);
+   rainfallChart();$('status').textContent='MRMS Pass 2 rainfall · '+d.times.length+' complete hourly grids';
+   drawRain();
+  }).catch(e=>{rainLoading=false;$('status').textContent='RAINFALL NOT LOADED: '+e.message});
+  return;
+ }
+ if(!rain&&data){$('time').value=data.times.length-1;$('status').textContent='CREST · '+data.times.length+' archived grids';draw();}
+ else if(rain&&rainData){$('time').value=rainData.times.length-1;$('status').textContent='MRMS Pass 2 rainfall · '+rainData.times.length+' hourly grids';drawRain();}
+}
+$('product').addEventListener('change',chooseProduct);
+$('rainMode').addEventListener('change',drawRain);
 function updateGrayOpacity(){
  const opacity=Number($('grayOpacity').value)/100;
  $('grayOpacityValue').textContent=Math.round(opacity*100)+'%';
@@ -55,6 +116,7 @@ function updateGrayOpacity(){
 }
 $('grayOpacity').addEventListener('input',updateGrayOpacity);
 function draw(){
+ if($('product').value==='rainfall'){drawRain();return}
  if(!data)return;
  const ix=Number($('time').value), isEver=$('mode').value==='ever', raster=isEver?data.ever_max:data.frames[ix];
  layer.clearLayers();grayLayer.clearLayers();
@@ -85,7 +147,7 @@ fetch('data/dashboard.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('T
  $('status').style.color='#8beaaf';
  $('peak').textContent=fmt(d.summary.peak_cfs_mi2)+' cfs/mi²';
  $('peakTime').textContent=local(d.summary.peak_time_utc)+' · '+d.summary.peak_latlon.map(v=>v.toFixed(4)).join(', ');
- draw();let minlat=Math.min(...d.latitudes),maxlat=Math.max(...d.latitudes),minlon=Math.min(...d.longitudes),maxlon=Math.max(...d.longitudes);
+ if($('product').value==='crest')draw();let minlat=Math.min(...d.latitudes),maxlat=Math.max(...d.latitudes),minlon=Math.min(...d.longitudes),maxlon=Math.max(...d.longitudes);
  map.fitBounds([[minlat,minlon],[maxlat,maxlon]]);
 }).catch(e=>{
  $('status').textContent='ARCHIVE NOT LOADED: '+e.message;
