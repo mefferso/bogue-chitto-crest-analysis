@@ -20,8 +20,8 @@ def discover(s3):
     keys = []
     # S3 layouts have differed over time; explicitly probe likely products/paths.
     prefixes = [
-        f"CONUS/{PRODUCT}/20261031/",
-        f"CONUS/{PRODUCT}/20261101/",
+        f"CONUS/{PRODUCT}_00.00/20261031/",
+        f"CONUS/{PRODUCT}_00.00/20261101/",
     ]
     for prefix in prefixes:
         print("Searching", prefix, flush=True)
