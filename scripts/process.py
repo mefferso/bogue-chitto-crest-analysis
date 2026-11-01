@@ -2,7 +2,7 @@
 import csv, gzip, json, re, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-import boto3, cfgrib, numpy as np, requests
+import boto3, numpy as np, requests, xarray as xr
 from botocore import UNSIGNED
 from botocore.config import Config
 from shapely.geometry import shape
@@ -67,7 +67,7 @@ with tempfile.TemporaryDirectory() as temp:
     grib = Path(temp) / "sample.grib2"
     for i, (ts, key) in enumerate(keys):
         grib.write_bytes(gzip.decompress(s3.get_object(Bucket="noaa-mrms-pds", Key=key)["Body"].read()))
-        ds = cfgrib.open_dataset(str(grib), indexpath="")
+        ds = xr.open_dataset(str(grib), engine="cfgrib", backend_kwargs={"indexpath": ""})
         try:
             var = next(iter(ds.data_vars.values()))
             field = np.asarray(var.values, dtype=np.float64)
