@@ -5,3 +5,4 @@ eccodes>=2.35,<3
 numpy>=1.26,<3
 requests>=2.31,<3
 shapely>=2.0,<3
+xarray>=2024.1,<2027
