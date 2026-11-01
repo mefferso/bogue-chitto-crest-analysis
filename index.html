@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pearl River County | FLASH CREST • 31 Oct 2026</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101722;color:#eef3fc}
+*{box-sizing:border-box}body{margin:0}header{padding:18px 24px;background:#152032;border-bottom:1px solid #334154}
+h1{font-size:clamp(20px,3vw,30px);margin:0 0 8px}p{margin:8px 0;color:#bfcbdc}small{color:#afbad0}
+main{display:grid;grid-template-columns:minmax(280px,360px) 1fr;min-height:calc(100vh - 135px)}
+aside{padding:20px;overflow:auto;border-right:1px solid #334154}#map{height:calc(100vh - 135px);min-height:500px;background:#182637}
+.stat{background:#1b2a41;border:1px solid #34465e;border-radius:12px;padding:12px;margin:10px 0}
+.stat strong{display:block;font-size:26px;color:white}.stat span{color:#b4c3d7;font-size:12px}
+button,select{border:1px solid #7287a0;background:#283d59;color:#fff;border-radius:8px;padding:7px 10px;cursor:pointer}
+button:disabled{opacity:.3}input[type=range]{width:100%;accent-color:#77dcff}
+.legend{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+.swatch{width:12px;height:12px;display:inline-block}.panel{margin:18px 0}
+a{color:#96d9ff}#status{font-weight:600;color:#f6c079}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-child,td:first-child{text-align:left}
+@media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}}
+</style></head>
+<body><header><h1>Pearl River County · Extreme FLASH CREST event</h1>
+<p>October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow | <b>Research-only modeled output — not measured discharge</b></p></header>
+<main><aside>
+<div id="status">Loading archived data…</div>
+<div class="stat"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
+<div class="panel"><label for="mode">Map layer</label>
+<select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
+<div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
+<div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
+<div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
+<div class="panel"><b>Simultaneous county area above threshold</b>
+<table><thead><tr><th>Threshold</th><th>At time</th><th>Ever*</th></tr></thead><tbody id="areas"></tbody></table>
+<small>*Ever = different pixels exceeding at any time; not a single simultaneous footprint. County-edge areas are approximate.</small></div>
+<div class="panel"><b>CREST cfs/mi²</b><div id="legend" class="legend"></div></div>
+<p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
+<p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
+</aside><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div></main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+const map=L.map('map',{preferCanvas:true}).setView([30.69,-89.62],10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+const colors=['#434958','#e6c800','#ff8d22','#ef4e59','#ae22bc','#142fce','#e8edf3'];
+const bins=[0,200,400,600,1000,2000,5000];
+function color(v){if(v===null || v===undefined)return null;let i=0;for(let k=0;k<bins.length;k++)if(v>=bins[k])i=k;return colors[i]}
+document.getElementById('legend').innerHTML=bins.map((b,i)=>'<span class="swatch" style="background:'+colors[i]+'"></span>'+b.toLocaleString()).join(' ');
+const $=id=>document.getElementById(id);
+const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:1});
+const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
+let data,layer=L.layerGroup().addTo(map);
+function draw(){
+ if(!data)return;
+ const ix=Number($('time').value), isEver=$('mode').value==='ever', raster=isEver?data.ever_max:data.frames[ix];
+ layer.clearLayers();
+ const dl=data.dlat/2,do_=data.dlon/2, bounds=[];
+ for(let r=0;r<raster.length;r++){
+  for(let c=0;c<raster[r].length;c++){
+   const v=raster[r][c];if(v==null)continue;
+   const lat=data.latitudes[r],lon=data.longitudes[c],b=[[lat-dl,lon-do_],[lat+dl,lon+do_]];
+   const rect=L.rectangle(b,{stroke:false,fillColor:color(v),fillOpacity:0.86,interactive:true});
+   rect.bindTooltip(fmt(v)+' cfs/mi²');rect.addTo(layer);bounds.push([lat,lon]);
+  }
+ }
+ $('timeLabel').textContent=local(data.times[ix].utc)+(isEver?' · map shows maximum over entire period':'');
+ $('currentPeak').textContent=fmt(data.times[ix].max_cfs_mi2);
+ $('areas').innerHTML=[600,1000,2000,5000].map(t=>'<tr><td>≥ '+fmt(t)+'</td><td>'+fmt(data.times[ix]['area_ge_'+t+'_sqmi'])+' mi²</td><td>'+fmt(data.summary.area_ever_sqmi[t])+' mi²</td></tr>').join('');
+ $('time').disabled=isEver;
+ $('prev').disabled=isEver || ix===0;$('next').disabled=isEver || ix===data.times.length-1;
+}
+$('mode').addEventListener('change',draw);
+$('time').addEventListener('input',draw);
+$('prev').onclick=()=>{$('time').value=Math.max(0,Number($('time').value)-1);draw()};
+$('next').onclick=()=>{$('time').value=Math.min(data.times.length-1,Number($('time').value)+1);draw()};
+fetch('data/dashboard.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('The historical NOAA grid has not been processed yet.');return r.json()})
+.then(d=>{
+ data=d;$('time').max=d.times.length-1;$('time').value=d.times.length-1;
+ $('status').textContent='Archive processed · '+d.times.length+' grids (check source metadata for gaps)';
+ $('status').style.color='#8beaaf';
+ $('peak').textContent=fmt(d.summary.peak_cfs_mi2)+' cfs/mi²';
+ $('peakTime').textContent=local(d.summary.peak_time_utc)+' · '+d.summary.peak_latlon.map(v=>v.toFixed(4)).join(', ');
+ draw();let minlat=Math.min(...d.latitudes),maxlat=Math.max(...d.latitudes),minlon=Math.min(...d.longitudes),maxlon=Math.max(...d.longitudes);
+ map.fitBounds([[minlat,minlon],[maxlat,maxlon]]);
+}).catch(e=>{
+ $('status').textContent='ARCHIVE NOT LOADED: '+e.message;
+ $('peak').textContent='Not verified';
+ $('peakTime').textContent='AWIPS screenshot showed ~5,918 cfs/mi²; archival confirmation pending.';
+});
+</script></body></html>
