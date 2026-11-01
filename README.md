@@ -1,0 +1,27 @@
+# Bogue Chitto / Pearl River County FLASH-CREST case study
+
+**31 October 2026 — Research-only retrospective, not operational flood guidance.**
+
+Interactive dashboard: https://mefferso.github.io/bogue-chitto-crest-analysis/
+
+Displays NOAA MRMS FLASH CREST maximum unit streamflow (modeled, **not observed discharge**) in **cfs/mi²**, with a time slider, event-maximum grid, per-time peak, and counts/estimated square-mile footprints above 600, 1,000, 2,000 and 5,000 cfs/mi².
+
+### Current status
+The site is designed to show **no verified data** until the download/analysis workflow successfully retrieves and processes historical NOAA GRIB2. The AWIPS screenshot reported approximately 5,918 cfs/mi²; this is a **user-reported AWIPS value, not a verified archival maximum**.
+
+### Run
+GitHub Actions → **Retrieve October 31 CREST** → **Run workflow**. The action reads anonymous NOAA MRMS S3, writes generated dashboard JSON in `data/`, and commits results. GitHub Pages must be configured under Settings → Pages → Deploy from a branch → main /(root) if not already enabled. The action will fail loudly if data are absent or the archive layout differs.
+
+Manual run: `pip install -r requirements.txt && python scripts/process.py`.
+
+### Method
+- Target: Pearl River County, Mississippi (FIPS 28109).
+- Window: Oct 31 2026 18:00 UTC through Nov 1 2026 12:00 UTC (inclusive); timestamps are explicitly UTC, displayed in Central time on the dashboard.
+- Native MRMS unit: m³ s⁻¹ km⁻², conversion to cfs/mi² = (35.31466672148859 / 0.3861021585424458).
+- Keep only valid finite nonnegative grid values, clipped by **cell-center inside county**.
+- Area estimates use latitude-adjusted spherical grid-cell areas. At county edges, counted area is approximate (not exact polygon/grid intersections).
+- `area_at_time`: simultaneous area at each timestamp. `area_ever`: union of cells exceeding threshold at any available time; **not** simultaneous.
+- These outputs are model predictions, not evidence of actual streamflow or damage; no flooding severity conclusions should be drawn from an isolated pixel.
+- Dataset coverage, missing timestamps, provenance/source keys, and original raw files should be independently checked before publications.
+
+Uses Leaflet + OpenStreetMap (external tile/CDN services); Python dependencies are pinned loosely for portability.
