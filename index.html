@@ -13,6 +13,11 @@ aside{padding:20px;overflow:auto;border-right:1px solid #334154}#map{height:calc
 button,select{border:1px solid #7287a0;background:#283d59;color:#fff;border-radius:8px;padding:7px 10px;cursor:pointer}
 button:disabled{opacity:.3}input[type=range]{width:100%;accent-color:#77dcff}
 .legend{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+#rainLegend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin-top:10px}
+#rainLegend .legend-item{display:flex;align-items:center;gap:7px}
+#rainLegend .swatch{width:22px;height:14px;border:1px solid #c6cdd7;border-radius:2px}
+.pin-label{background:#fff;color:#111827;border:1px solid #334155;border-radius:5px;padding:2px 5px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 5px #0006}
+.leaflet-tooltip.pin-label:before{display:none}
 .swatch{width:12px;height:12px;display:inline-block}.panel{margin:18px 0}
 a{color:#96d9ff}#status{font-weight:600;color:#f6c079}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
@@ -23,20 +28,20 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <p>October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow | <b>Research-only modeled output — not measured discharge</b></p></header>
 <main><aside>
 <div id="status">Loading archived data…</div>
-<div class="stat"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
+<div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">FLASH CREST</option><option value="rainfall">MRMS Rainfall</option></select></div>
+<div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
+<div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
 <select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
 <div class="panel"><label for="grayOpacity">Gray background opacity: <output id="grayOpacityValue" for="grayOpacity">45%</output></label><input id="grayOpacity" type="range" min="0" max="100" step="5" value="45" aria-label="Opacity of gray low-value CREST cells"><small>Only changes the gray 0–199 cfs/mi² cells; colored CREST pixels are unaffected.</small></div>
 </div><div id="rainControls" hidden><div class="panel"><label for="rainMode">Rainfall map layer</label><select id="rainMode"><option value="cumulative">Event accumulation through selected time</option><option value="one_hour">Rolling 1-hour rainfall</option><option value="three_hour">Rolling 3-hour rainfall</option></select></div><div class="stat"><span>Maximum event rainfall</span><strong id="rainEvent">—</strong><small>inches anywhere in county</small></div><div class="stat"><span>Maximum rolling 1-hour rainfall</span><strong id="rain1">—</strong><small id="rain1Time">—</small></div><div class="stat"><span>Maximum rolling 3-hour rainfall</span><strong id="rain3">—</strong><small id="rain3Time">—</small></div><div class="stat"><span>Peak at selected time / selected rainfall mode</span><strong id="rainCurrent">—</strong><small>inches anywhere in county</small></div><div class="panel"><b>County-maximum rainfall through time</b><div id="rainChart" style="overflow-x:auto"></div><small>County maximum at each ending time; not a single fixed observation point.</small></div><div class="panel"><b>Rainfall (inches)</b><div id="rainLegend" class="legend"></div></div><p>Hourly MRMS MultiSensor QPE Pass 2 (estimated, not a rain gauge). Three-hour totals are only available after three complete hourly intervals.</p></div>
-<div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
-<div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
-<div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
+<div id="crestStatistics"><div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
 <div class="panel"><b>Simultaneous county area above threshold</b>
 <table><thead><tr><th>Threshold</th><th>At time</th><th>Ever*</th></tr></thead><tbody id="areas"></tbody></table>
 <small>*Ever = different pixels exceeding at any time; not a single simultaneous footprint. County-edge areas are approximate.</small></div>
 <div class="panel"><b>CREST cfs/mi²</b><div id="legend" class="legend"></div></div>
-<p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
+</div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a numbered pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
 </aside><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
@@ -51,10 +56,47 @@ const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDi
 const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
 let data,layer=L.layerGroup().addTo(map),grayLayer=L.layerGroup().addTo(map);
 let rainData=null,rainLoading=false;
+const pinLayer=L.layerGroup().addTo(map),samples=[];
+function currentGrid(){
+ const isRain=$('product').value==='rainfall';
+ if(isRain){
+   if(!rainData)return null;
+   const ix=Number($('time').value),mode=$('rainMode').value;
+   return {dataset:rainData,frame:rainData.frames[mode][ix],unit:'in'};
+ }
+ if(!data)return null;
+ const ix=Number($('time').value);
+ return {dataset:data,frame:$('mode').value==='ever'?data.ever_max:data.frames[ix],unit:'cfs/mi²'};
+}
+function sampleAt(latlng){
+ const grid=currentGrid();
+ if(!grid||!grid.frame)return null;
+ const d=grid.dataset;
+ const nearest=(arr,v)=>arr.reduce((best,x,i)=>Math.abs(x-v)<Math.abs(arr[best]-v)?i:best,0);
+ const r=nearest(d.latitudes,latlng.lat),c=nearest(d.longitudes,latlng.lng);
+ if(Math.abs(d.latitudes[r]-latlng.lat)>d.dlat/2+1e-6||Math.abs(d.longitudes[c]-latlng.lng)>d.dlon/2+1e-6)return null;
+ const value=grid.frame[r]?.[c];
+ return value==null||!Number.isFinite(value)?null:{value,unit:grid.unit};
+}
+function updatePins(){
+ pinLayer.clearLayers();
+ for(let i=0;i<samples.length;i++){
+   const entry=samples[i],v=sampleAt(entry);
+   const label=(i+1)+': '+(v?fmt(v.value)+' '+v.unit:'N/A');
+   const marker=L.circleMarker([entry.lat,entry.lng],{radius:6,color:'#101827',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(pinLayer);
+   marker.bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'pin-label'}).openTooltip();
+ }
+ $('pinCount').textContent=samples.length+' pin'+(samples.length===1?'':'s');
+}
+map.on('click',e=>{
+ if(!sampleAt(e.latlng))return;
+ samples.push({lat:e.latlng.lat,lng:e.latlng.lng});updatePins();
+});
+$('clearPins').addEventListener('click',()=>{samples.length=0;updatePins()});
 const rainBins=[0,0.1,0.25,0.5,1,2,3,5,8,12];
 const rainColors=['#a1aab5','#99dce0','#52c7d1','#36ad64','#c6cc32','#f2ae32','#f66c3d','#db307b','#9927a8','#5622aa'];
 const rainColor=v=>{let i=0;for(let k=0;k<rainBins.length;k++)if(v>=rainBins[k])i=k;return rainColors[i]};
-$('rainLegend').innerHTML=rainBins.map((n,i)=>'<span class="swatch" style="background:'+rainColors[i]+'"></span>'+n).join(' ');
+$('rainLegend').innerHTML=rainBins.map((n,i)=>'<div class="legend-item"><span class="swatch" style="background:'+rainColors[i]+'"></span><span>'+fmt(n)+'–'+(i+1<rainBins.length?fmt(rainBins[i+1]):'∞')+' in</span></div>').join('');
 function rainfallChart(){
  const rows=rainData.times, W=560,H=190,pad=34;
  const max=Math.max(1,...rows.map(r=>r.max_cumulative));
@@ -85,10 +127,13 @@ function drawRain(){
  $('rainCurrent').textContent=fmt(row[{cumulative:'max_cumulative',one_hour:'max_1h',three_hour:'max_3h'}[mode]])+' in';
  $('timeLabel').textContent=local(row.utc)+' · hourly ending time'+(frame?'':' · 3-hour window incomplete');
  $('time').disabled=false;$('prev').disabled=ix===0;$('next').disabled=ix===rainData.times.length-1;
+ updatePins();
 }
 function chooseProduct(){
  const rain=$('product').value==='rainfall';
+ layer.clearLayers();grayLayer.clearLayers();pinLayer.clearLayers();
  $('crestControls').hidden=rain;$('rainControls').hidden=!rain;
+ $('crestEventPeak').hidden=rain;$('crestStatistics').hidden=rain;
  $('grayOpacity').closest('.panel').hidden=rain;
  $('time').max=rain?(rainData?rainData.times.length-1:0):(data?data.times.length-1:0);
  $('time').disabled=rain?!rainData:!data;
@@ -135,11 +180,12 @@ function draw(){
  $('areas').innerHTML=[600,1000,2000,5000].map(t=>'<tr><td>≥ '+fmt(t)+'</td><td>'+fmt(data.times[ix]['area_ge_'+t+'_sqmi'])+' mi²</td><td>'+fmt(data.summary.area_ever_sqmi[t])+' mi²</td></tr>').join('');
  $('time').disabled=isEver;
  $('prev').disabled=isEver || ix===0;$('next').disabled=isEver || ix===data.times.length-1;
+ updatePins();
 }
 $('mode').addEventListener('change',draw);
 $('time').addEventListener('input',draw);
 $('prev').onclick=()=>{$('time').value=Math.max(0,Number($('time').value)-1);draw()};
-$('next').onclick=()=>{$('time').value=Math.min(data.times.length-1,Number($('time').value)+1);draw()};
+$('next').onclick=()=>{$('time').value=Math.min(($('product').value==='rainfall'?rainData?.times.length:data?.times.length||1)-1,Number($('time').value)+1);draw()};
 fetch('data/dashboard.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('The historical NOAA grid has not been processed yet.');return r.json()})
 .then(d=>{
  data=d;$('time').max=d.times.length-1;$('time').value=d.times.length-1;
