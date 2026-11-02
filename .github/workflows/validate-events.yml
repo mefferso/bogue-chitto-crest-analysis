@@ -25,7 +25,8 @@ jobs:
           import re
           html=Path('index.html').read_text()
           scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',html)
-          scripts=[script for script in scripts if script.strip()]\n          assert len(scripts)==1
+          scripts=[script for script in scripts if script.strip()]
+          assert len(scripts)==1
           Path('/tmp/dashboard.js').write_text(scripts[0])
           PY
           node --check /tmp/dashboard.js
