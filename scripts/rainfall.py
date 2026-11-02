@@ -7,8 +7,8 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from shapely.geometry import shape
 from shapely import contains_xy
-START=datetime(2026,10,31,12,tzinfo=timezone.utc)
-END=datetime(2026,11,1,3,tzinfo=timezone.utc)
+START=datetime(2026,10,31,18,tzinfo=timezone.utc)
+END=datetime(2026,11,1,12,tzinfo=timezone.utc)
 PRODUCT="MultiSensor_QPE_01H_Pass2"
 BUCKET="noaa-mrms-pds"
 def main():
@@ -68,18 +68,22 @@ def main():
         return None if a is None else [[round(float(v),3) if np.isfinite(v) else None for v in line] for line in a]
     rows=[{"utc":t.isoformat(),"max_1h":mx(cube[i]),"max_3h":mx(rolling3[i]),
            "max_cumulative":mx(cum[i]),"source_key":found[t]} for i,t in enumerate(expected)]
-    p1=max(rows,key=lambda r:r["max_1h"])
+    # The initial timestamp is a zero-accumulation baseline, not a 1-hour QPE observation.
+    baseline=np.where(mask,0.0,np.nan)
+    rows.insert(0,{"utc":START.isoformat(),"max_1h":None,"max_3h":None,
+                   "max_cumulative":0.0,"source_key":None})
+    p1=max((r for r in rows if r["max_1h"] is not None),key=lambda r:r["max_1h"])
     p3=max((r for r in rows if r["max_3h"] is not None),key=lambda r:r["max_3h"])
     result={"summary":{"product":PRODUCT,"source":"NOAA public MRMS AWS archive","units":"inches",
-                       "start_utc":START.isoformat(),"end_utc":END.isoformat(),"hourly_grids":len(rows),
+                       "start_utc":START.isoformat(),"end_utc":END.isoformat(),"hourly_grids":len(expected),
                        "max_event_inches":mx(cum[-1]),"peak_1h_inches":p1["max_1h"],"peak_1h_utc":p1["utc"],
                        "peak_3h_inches":p3["max_3h"],"peak_3h_utc":p3["utc"],
-                       "limitations":"Pass 2 QPE estimated precipitation; no incomplete periods allowed. County maxima need not share location."},
+                       "limitations":"18Z Oct 31 to 12Z Nov 1, matching CREST temporal boundaries. First map frame is a zero accumulation baseline, not a 1-hour observation. Pass 2 QPE estimates, hourly ending times; county maxima need not share location."},
             "latitudes":latcut.tolist(),"longitudes":loncut.tolist(),
             "dlat":abs(float(np.median(np.diff(latcut)))),"dlon":abs(float(np.median(np.diff(loncut)))),
-            "times":rows,"frames":{"cumulative":[encode(a) for a in cum],
-                                   "one_hour":[encode(a) for a in cube],
-                                   "three_hour":[encode(a) for a in rolling3]}}
+            "times":rows,"frames":{"cumulative":[encode(baseline)]+[encode(a) for a in cum],
+                                   "one_hour":[None]+[encode(a) for a in cube],
+                                   "three_hour":[None]+[encode(a) for a in rolling3]}}
     out=Path("data/rainfall.json");out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result,separators=(",",":")))
     print("Wrote",out,"rain max",result["summary"]["max_event_inches"],flush=True)
