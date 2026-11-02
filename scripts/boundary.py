@@ -54,8 +54,9 @@ def generate(fips, destination, marine=False):
             geom=shape(feat["geometry"])
             if geom.is_empty or not geom.intersects(adjacent):continue
             props=feat.get("properties",{})
-            name=str(props.get("NAME") or props.get("Name") or "Unnamed")
-            code=str(props.get("ID") or props.get("id") or "")
+            normalized={str(k).upper():v for k,v in props.items()}
+            name=str(normalized.get("NAME") or "Unnamed")
+            code=str(normalized.get("ID") or "")
             chosen.append({"id":code,"name":name,"geometry":geom})
         if not chosen:
             raise ValueError("No adjacent coastal marine zones returned; refusing silent county-only fallback")
