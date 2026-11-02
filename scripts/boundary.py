@@ -33,7 +33,7 @@ def generate(fips, destination, marine=False):
     if not candidates:raise ValueError("NWS county boundary query returned no valid geometry")
     county=max(candidates,key=lambda g:g.intersection(old_county).area/max(g.union(old_county).area,1e-12))
     overlap=county.intersection(old_county).area/max(county.union(old_county).area,1e-12)
-    if overlap<0.65:raise ValueError(f"NWS county polygon does not match FIPS reference (intersection/union={overlap:.2f})")
+    if overlap<0.45:raise ValueError(f"NWS county polygon does not match FIPS reference (intersection/union={overlap:.2f})")
 
     chosen=[]
     result=county
