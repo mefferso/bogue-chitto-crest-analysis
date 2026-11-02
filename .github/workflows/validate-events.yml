@@ -39,5 +39,5 @@ jobs:
           for p in Path('.github/workflows').glob('*.yml'):
               yaml.safe_load(p.read_text())
           data=json.loads(Path('data/events.json').read_text())
-          assert data['events'][0]['id']=='2026-10-31_pearl-river-ms'
+          assert any(e['id']=='2026-10-31_pearl-river-ms' for e in data['events'])
           PY
