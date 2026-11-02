@@ -41,3 +41,20 @@ jobs:
           data=json.loads(Path('data/events.json').read_text())
           assert any(e['id']=='2026-10-31_pearl-river-ms' for e in data['events'])
           PY
+      - name: Verify current NWS Orleans county and marine geometries
+        run: |
+          python -m pip install requests shapely
+          python - <<'PY'
+          import tempfile, sys
+          from pathlib import Path
+          sys.path.insert(0,'scripts')
+          from boundary import generate
+          from shapely.geometry import shape
+          with tempfile.TemporaryDirectory() as d:
+              land=generate('22071',Path(d)/'land.geojson',marine=False)
+              marine=generate('22071',Path(d)/'marine.geojson',marine=True)
+              assert land['properties']['mode']=='county'
+              assert marine['properties']['marine_zones']
+              assert shape(marine['geometry']).area>shape(land['geometry']).area
+              print('NWS boundary query succeeded:',marine['properties']['marine_zones'])
+          PY
