@@ -1,9 +1,17 @@
 {
   "id": "2026-10-31_jefferson-parish-la",
-  "name": "Jefferson Parish, LA",
+  "name": "Jefferson Parish, LA + surrounding parishes/counties",
   "boundary_file": "data/events/2026-10-31_jefferson-parish-la/boundary.geojson",
-  "boundary_mode": "county",
+  "boundary_mode": "county_and_neighbors",
   "marine_zones": [],
+  "surrounding_counties": [
+    "22089",
+    "22105",
+    "22057",
+    "22075",
+    "22103",
+    "22071"
+  ],
   "label": "Oct 31, 2026 \u2014 Jefferson Parish, LA",
   "start_utc": "2026-10-31T19:00:00+00:00",
   "end_utc": "2026-11-01T08:00:00+00:00",
