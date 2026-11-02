@@ -41,7 +41,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <table><thead><tr><th>Threshold</th><th>At time</th><th>Ever*</th></tr></thead><tbody id="areas"></tbody></table>
 <small>*Ever = different pixels exceeding at any time; not a single simultaneous footprint. County-edge areas are approximate.</small></div>
 <div class="panel"><b>CREST cfs/mi²</b><div id="legend" class="legend"></div></div>
-</div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a numbered pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
+</div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a value pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
 </aside><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
@@ -82,7 +82,7 @@ function updatePins(){
  pinLayer.clearLayers();
  for(let i=0;i<samples.length;i++){
    const entry=samples[i],v=sampleAt(entry);
-   const label=(i+1)+': '+(v?fmt(v.value)+' '+v.unit:'N/A');
+   const label=v?fmt(v.value)+' '+v.unit:'N/A';
    const marker=L.circleMarker([entry.lat,entry.lng],{radius:6,color:'#101827',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(pinLayer);
    marker.bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'pin-label'}).openTooltip();
  }
