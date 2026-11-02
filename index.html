@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pearl River County | FLASH CREST • 31 Oct 2026</title>
+<title>Pearl River County | CREST Unit Streamflow • 31 Oct 2026</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#101722;color:#eef3fc}
@@ -30,12 +30,12 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 .timeline-legend{gap:16px;margin:6px 0 12px}#chartReadout{min-height:23px;font-size:13px;color:#dce7f6;font-variant-numeric:tabular-nums}
 @media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}#rainTimelinePanel{padding:14px 10px}.timeline-head h2{font-size:17px}}
 </style></head>
-<body><header><h1>Pearl River County · Extreme FLASH CREST event</h1>
+<body><header><h1>Pearl River County · Extreme CREST Unit Streamflow event</h1>
 <p>October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow | <b>Research-only modeled output — not measured discharge</b></p></header>
 <main><aside>
 <div id="status">Loading archived data…</div>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
-<div class="panel"><label for="product">Product</label><select id="product"><option value="crest">FLASH CREST</option><option value="rainfall">MRMS Rainfall</option></select></div>
+<div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
@@ -46,13 +46,13 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div class="panel"><b>Simultaneous county area above threshold</b>
 <table><thead><tr><th>Threshold</th><th>At time</th><th>Ever*</th></tr></thead><tbody id="areas"></tbody></table>
 <small>*Ever = different pixels exceeding at any time; not a single simultaneous footprint. County-edge areas are approximate.</small></div>
-<div class="panel"><b>CREST cfs/mi²</b><div id="legend" class="legend"></div></div>
+<div class="panel"><b>CREST Unit Streamflow (cfs/mi²)</b><div id="legend" class="legend"></div></div>
 </div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a value pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
 </aside><section id="vizColumn"><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div>
 <section id="rainTimelinePanel" hidden aria-label="Rainfall and CREST time series">
-<div class="timeline-head"><div><h2>Rainfall evolution · Pearl River County</h2><small>County maximum at each time; maxima may occur at different grid cells. CREST is modeled unit streamflow, not discharge.</small></div><label class="compare-check"><input type="checkbox" id="showCrest"> Compare CREST (right axis)</label></div>
-<div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST (right axis)</span></div>
+<div class="timeline-head"><div><h2>Rainfall evolution · Pearl River County</h2><small>County maximum at each time; maxima may occur at different grid cells. CREST Unit Streamflow is modeled, not measured discharge.</small></div><label class="compare-check"><input type="checkbox" id="showCrest"> Compare CREST Unit Streamflow (right axis)</label></div>
+<div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST Unit Streamflow (right axis)</span></div>
 <div id="chartReadout" aria-live="polite">Hover or select a time to examine the rainfall evolution.</div>
 </section></section></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
@@ -160,13 +160,13 @@ function rainfallChart(){
  lines+=cursor(selected,'#fff',false);
  if(chartHoverIndex!==null&&hover!==selected)lines+=cursor(hover,'#ffcf72',true);
  lines+=text(left,16,'Rainfall (inches)','start','#d5e5f5');
- if(crestOn)lines+=text(W-right,16,'CREST (cfs/mi²)','end','#a0e28b');
+ if(crestOn)lines+=text(W-right,16,'CREST Unit Streamflow (cfs/mi²)','end','#a0e28b');
  lines+='<rect id="chartHit" x="'+left+'" y="'+top+'" width="'+(W-left-right)+'" height="'+(H-top-bottom)+'" fill="transparent" style="cursor:crosshair"/>';
  $('rainChart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Rainfall timeline with hourly grid, Central time labels, synchronized cursor and optional CREST on right axis">'+lines+'</svg>';
  $('crestLegend').hidden=!crestOn;
  const read=rows[hover];
  const crestAt=crestRows.length?crestRows.reduce((prev,r)=>Math.abs(Date.parse(r.utc)-ts[hover])<Math.abs(Date.parse(prev.utc)-ts[hover])?r:prev):null;
- $('chartReadout').textContent=local(read.utc)+'  |  Event: '+fmt(read.max_cumulative)+' in  |  1-hour: '+fmt(read.max_1h)+' in  |  3-hour: '+fmt(read.max_3h)+' in'+(crestAt?'  |  CREST: '+fmt(crestAt.max_cfs_mi2)+' cfs/mi² ('+local(crestAt.utc)+')':'');
+ $('chartReadout').textContent=local(read.utc)+'  |  Event: '+fmt(read.max_cumulative)+' in  |  1-hour: '+fmt(read.max_1h)+' in  |  3-hour: '+fmt(read.max_3h)+' in'+(crestAt?'  |  CREST Unit Streamflow: '+fmt(crestAt.max_cfs_mi2)+' cfs/mi² ('+local(crestAt.utc)+')':'');
  const hit=$('chartHit');
  hit.addEventListener('pointermove',e=>{
   const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width;
