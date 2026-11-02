@@ -7,6 +7,7 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from shapely.geometry import shape
 from shapely import contains_xy
+from boundary import load as load_boundary
 
 PRODUCT = "FLASH_CREST_MAXUNITSTREAMFLOW"
 
@@ -51,13 +52,7 @@ def discover(s3):
                 print(f"Archive diagnostics failed for {prefix}: {exc}", flush=True)
     return sorted(set(keys))
 
-county_geojson = requests.get(
-    "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json",
-    timeout=60
-)
-county_geojson.raise_for_status()
-feature = next(f for f in county_geojson.json()["features"] if str(f.get("id")) == FIPS)
-county = shape(feature["geometry"])
+county = load_boundary(OUT, FIPS)
 s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 keys = discover(s3)
 if not keys:

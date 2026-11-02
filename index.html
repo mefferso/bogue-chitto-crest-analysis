@@ -70,6 +70,7 @@ const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDi
 const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
 let data,layer=L.layerGroup().addTo(map),grayLayer=L.layerGroup().addTo(map);
 let rainData=null,rainLoading=false;
+let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
 const pinLayer=L.layerGroup().addTo(map),samples=[];
 function currentGrid(){
  const isRain=$('product').value==='rainfall';
@@ -283,6 +284,16 @@ return fetch(eventPath('dashboard.json'),{cache:'no-store'}).then(r=>{if(!r.ok)t
 // Preserve the original legacy event files; load new events only from their isolated directories.
 async function selectEvent(event){
  activeEvent=event;
+ boundaryLayer.clearLayers();
+ if(event.boundary_file){
+  try {
+   const response=await fetch(event.boundary_file,{cache:'no-store'});
+   if(!response.ok)throw Error('Boundary not published');
+   const geo=await response.json();
+   boundaryLayer.addData(geo);
+   if(boundaryLayer.getBounds().isValid())map.fitBounds(boundaryLayer.getBounds(),{padding:[10,10]});
+  }catch(error){console.warn('Could not load archived event boundary',error)}
+ }
  data=null;rainData=null;rainLoading=false;chartHoverIndex=null;
  samples.length=0;pinLayer.clearLayers();layer.clearLayers();grayLayer.clearLayers();
  $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';

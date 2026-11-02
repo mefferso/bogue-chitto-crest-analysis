@@ -8,6 +8,7 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from shapely.geometry import shape
 from shapely import contains_xy
+from boundary import load as load_boundary
 START=datetime.fromisoformat(os.environ.get("EVENT_START_UTC","2026-10-31T18:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
 END=datetime.fromisoformat(os.environ.get("EVENT_END_UTC","2026-11-01T12:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
 FIPS=os.environ.get("EVENT_FIPS","28109")
@@ -32,9 +33,7 @@ def main():
     expected=[START+timedelta(hours=i) for i in range(1,int((END-START).total_seconds()/3600)+1)]
     missing=[t.isoformat() for t in expected if t not in found]
     if missing:raise SystemExit(f"Missing hourly QPE intervals: {missing}; refusing incomplete event accumulation")
-    response=requests.get("https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json",timeout=60)
-    response.raise_for_status()
-    county=shape(next(f for f in response.json()["features"] if str(f.get("id"))==FIPS)["geometry"])
+    county=load_boundary(OUT,FIPS)
     latcut=loncut=mask=yi=xi=original_shape=None
     hourly=[]
     with tempfile.TemporaryDirectory() as temp:
