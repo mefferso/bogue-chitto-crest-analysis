@@ -45,6 +45,10 @@ def prepare():
     if existing and os.environ.get("EVENT_OVERWRITE","false").lower()!="true":
         raise ValueError("Event already exists: use overwrite=true explicitly")
     out.mkdir(parents=True,exist_ok=True)
+    from boundary import generate
+    marine=os.environ.get("EVENT_INCLUDE_MARINE","false").lower()=="true"
+    geometry=generate(fips,out/"boundary.geojson",marine=marine)
+    print(f"Boundary created: {geometry['properties']['mode']}; zones: {geometry['properties']['marine_zones']}",file=sys.stderr)
     env={"EVENT_FIPS":fips,"EVENT_ID":eid,"EVENT_NAME":f"{name}, {state}",
          "EVENT_START_UTC":start.isoformat(),"EVENT_END_UTC":end.isoformat(),
          "EVENT_OUTPUT_DIR":str(out)}
@@ -66,7 +70,13 @@ def register():
     name=os.environ["EVENT_NAME"]
     start=datetime.fromisoformat(os.environ["EVENT_START_UTC"]).astimezone(CENTRAL)
     end=datetime.fromisoformat(os.environ["EVENT_END_UTC"]).astimezone(CENTRAL)
-    event={"id":os.environ["EVENT_ID"],"name":name,
+    boundary=json.loads((out/"boundary.geojson").read_text())
+    marine=boundary["properties"]["mode"]=="county_and_marine"
+    area_name=name+(" + adjacent NWS marine zones" if marine else "")
+    event={"id":os.environ["EVENT_ID"],"name":area_name,
+           "boundary_file":str(out/"boundary.geojson"),
+           "boundary_mode":boundary["properties"]["mode"],
+           "marine_zones":boundary["properties"]["marine_zones"],
            "label":f"{start:%b %-d, %Y} — {name}",
            "start_utc":os.environ["EVENT_START_UTC"],
            "end_utc":os.environ["EVENT_END_UTC"],
