@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "id": "2026-10-31_pearl-river-ms",
+      "label": "Oct 31, 2026 — Pearl River County, MS",
+      "name": "Pearl River County, MS",
+      "start_utc": "2026-10-31T18:00:00Z",
+      "end_utc": "2026-11-01T12:00:00Z",
+      "data_dir": "data",
+      "products": {
+        "crest": true,
+        "rainfall": true
+      }
+    }
+  ]
+}

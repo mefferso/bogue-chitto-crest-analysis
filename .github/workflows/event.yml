@@ -1,0 +1,97 @@
+name: Generate Historical Event
+on:
+  workflow_dispatch:
+    inputs:
+      county:
+        description: 'County or parish (FIPS embedded in choice)'
+        required: true
+        type: choice
+        options:
+          - '28109 | Pearl River County, MS'
+          - '22051 | Jefferson Parish, LA'
+          - '22103 | St. Tammany Parish, LA'
+          - '22071 | Orleans Parish, LA'
+          - '22033 | East Baton Rouge Parish, LA'
+          - '22095 | St. John the Baptist Parish, LA'
+          - '22089 | St. Charles Parish, LA'
+          - '22075 | Plaquemines Parish, LA'
+          - '22087 | St. Bernard Parish, LA'
+          - '22057 | Lafourche Parish, LA'
+          - '22109 | Terrebonne Parish, LA'
+          - '22063 | Livingston Parish, LA'
+          - '22105 | Tangipahoa Parish, LA'
+          - '22093 | St. James Parish, LA'
+          - '22047 | Iberville Parish, LA'
+          - '22037 | East Feliciana Parish, LA'
+          - '22091 | St. Helena Parish, LA'
+          - '22117 | Washington Parish, LA'
+          - '28045 | Hancock County, MS'
+          - '28047 | Harrison County, MS'
+          - '28059 | Jackson County, MS'
+          - '28035 | Forrest County, MS'
+          - '28073 | Lamar County, MS'
+          - '28091 | Marion County, MS'
+          - '28147 | Walthall County, MS'
+          - '28113 | Pike County, MS'
+      start_local:
+        description: 'Start Central time (YYYY-MM-DD HH:00)'
+        required: true
+        type: string
+      end_local:
+        description: 'End Central time (YYYY-MM-DD HH:00)'
+        required: true
+        type: string
+      overwrite:
+        description: 'Replace an existing event with the same date/county'
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: historical-event-generation
+  cancel-in-progress: false
+jobs:
+  build-event:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install GRIB tools and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeccodes0 libeccodes-tools
+          python -m pip install -r requirements.txt
+      - name: Validate inputs and prepare event folder
+        env:
+          EVENT_COUNTY: ${{ inputs.county }}
+          EVENT_START_LOCAL: ${{ inputs.start_local }}
+          EVENT_END_LOCAL: ${{ inputs.end_local }}
+          EVENT_OVERWRITE: ${{ inputs.overwrite }}
+        run: python scripts/event_library.py prepare >> "$GITHUB_ENV"
+      - name: Retrieve MRMS rainfall (required)
+        run: python scripts/rainfall.py
+      - name: Retrieve FLASH CREST (optional if archive unavailable)
+        id: crest
+        continue-on-error: true
+        run: python scripts/process.py
+      - name: Register event and validate outputs
+        env:
+          CREST_STATUS: ${{ steps.crest.outcome }}
+        run: python scripts/event_library.py register
+      - name: Commit generated event
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/events.json data/events/
+          if git diff --cached --quiet; then
+            echo "No new event changes"
+          else
+            git commit -m "Archive historical event: $EVENT_ID"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
