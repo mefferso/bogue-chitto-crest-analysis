@@ -72,7 +72,7 @@ def main():
     baseline=np.where(mask,0.0,np.nan)
     rows.insert(0,{"utc":START.isoformat(),"max_1h":None,"max_3h":None,
                    "max_cumulative":0.0,"source_key":None})
-    p1=max(rows,key=lambda r:r["max_1h"])
+    p1=max((r for r in rows if r["max_1h"] is not None),key=lambda r:r["max_1h"])
     p3=max((r for r in rows if r["max_3h"] is not None),key=lambda r:r["max_3h"])
     result={"summary":{"product":PRODUCT,"source":"NOAA public MRMS AWS archive","units":"inches",
                        "start_utc":START.isoformat(),"end_utc":END.isoformat(),"hourly_grids":len(expected),
