@@ -131,6 +131,7 @@ function drawRain(){
 }
 function chooseProduct(){
  const rain=$('product').value==='rainfall';
+ layer.clearLayers();grayLayer.clearLayers();pinLayer.clearLayers();
  $('crestControls').hidden=rain;$('rainControls').hidden=!rain;
  $('crestEventPeak').hidden=rain;$('crestStatistics').hidden=rain;
  $('grayOpacity').closest('.panel').hidden=rain;
