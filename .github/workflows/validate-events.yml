@@ -56,5 +56,9 @@ jobs:
               assert land['properties']['mode']=='county'
               assert marine['properties']['marine_zones']
               assert shape(marine['geometry']).area>shape(land['geometry']).area
+              neighbors=generate('22071',Path(d)/'neighbor.geojson',neighbors=True)
+              assert len(neighbors['properties']['surrounding_counties'])>0
+              combined=generate('22071',Path(d)/'combined.geojson',marine=True,neighbors=True)
+              assert combined['properties']['surrounding_counties']
               print('NWS boundary query succeeded:',marine['properties']['marine_zones'])
           PY

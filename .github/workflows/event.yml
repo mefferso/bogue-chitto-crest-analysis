@@ -45,6 +45,10 @@ on:
         description: 'Include adjacent NWS coastal marine zones (changes analysis area)'
         type: boolean
         default: true
+      include_neighbors:
+        description: 'Include surrounding parishes/counties (changes analysis area)'
+        type: boolean
+        default: false
       overwrite:
         description: 'Replace an existing event with the same date/county'
         type: boolean
@@ -77,6 +81,7 @@ jobs:
           EVENT_END_LOCAL: ${{ inputs.end_local }}
           EVENT_OVERWRITE: ${{ inputs.overwrite }}
           EVENT_INCLUDE_MARINE: ${{ inputs.include_marine }}
+          EVENT_INCLUDE_NEIGHBORS: ${{ inputs.include_neighbors }}
         run: python scripts/event_library.py prepare >> "$GITHUB_ENV"
       - name: Retrieve MRMS rainfall (required)
         run: python scripts/rainfall.py
