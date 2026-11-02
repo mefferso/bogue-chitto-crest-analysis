@@ -130,13 +130,24 @@ function rainfallChart(){
   lines+='<line x1="'+left+'" y1="'+yy+'" x2="'+(W-right)+'" y2="'+yy+'" stroke="#40516a" stroke-opacity=".55"/>'+text(left-8,yy+4,v.toFixed(1),'end');
   if(crestOn)lines+=text(W-right+8,yy+4,Math.round(crestCeiling*i/5).toLocaleString(),'start','#a0e28b');
  }
- const clock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hour12:true,timeZoneName:'short'});
- for(let t=Math.ceil(t0/3600000)*3600000;t<=t1;t+=3600000){
-  const xx=x(t);
-  lines+='<line x1="'+xx+'" y1="'+top+'" x2="'+xx+'" y2="'+(H-bottom)+'" stroke="#42536c" stroke-opacity=".5"/>';
-  const label=clock.format(new Date(t)).replace(':00','');
-  lines+=text(xx,H-bottom+23,label);
+ // Keep hourly gridlines but label only ticks with room for readable text.
+ const chartWidth=$('rainChart').clientWidth||900;
+ const hourlyPixels=chartWidth*3600000/span;
+ const tickStep=Math.max(1,Math.ceil(70/Math.max(1,hourlyPixels)));
+ const hourClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hour12:true});
+ const zoneClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',timeZoneName:'short'});
+ let previousZone=null;
+ for(let hour=0,t=Math.ceil(t0/3600000)*3600000;t<=t1;t+=3600000,hour++){
+  const xx=x(t),zone=zoneClock.formatToParts(new Date(t)).find(p=>p.type==='timeZoneName')?.value||'CT';
+  lines+='<line x1="'+xx+'" y1="'+top+'" x2="'+xx+'" y2="'+(H-bottom)+'" stroke="#42536c" stroke-opacity=".4"/>';
+  const changed=previousZone!==null&&zone!==previousZone;
+  if(hour%tickStep===0||changed){
+   const label=hourClock.format(new Date(t)).replace(/\s/g,'')+(changed?' '+zone:'');
+   lines+=text(xx,H-bottom+23,label);
+  }
+  previousZone=zone;
  }
+ lines+=text((left+W-right)/2,H-12,'Central time (CDT → CST on Nov 1, 2026)');
  const path=(items,fn)=>{let d='',started=false;for(const [t,v] of items){if(!Number.isFinite(v)){started=false;continue}d+=(started?'L':'M')+x(t).toFixed(2)+' '+fn(v).toFixed(2)+' ';started=true}return d};
  const series=[['max_cumulative','#56caff'],['max_1h','#f3b843'],['max_3h','#ed71bd']];
  for(const [field,color] of series){
