@@ -13,7 +13,7 @@ COUNTY_SOURCE="https://raw.githubusercontent.com/plotly/datasets/master/geojson-
 MARINE_SOURCE="https://mapservices.weather.noaa.gov/static/rest/services/nws_reference_maps/nws_reference_map/FeatureServer/5/query"
 NWS_COUNTY_SOURCE="https://mapservices.weather.noaa.gov/static/rest/services/nws_reference_maps/nws_reference_map/FeatureServer/2/query"
 
-def generate(fips, destination, marine=False):
+def generate(fips, destination, marine=False, neighbors=False):
     r=requests.get(COUNTY_SOURCE,timeout=65);r.raise_for_status()
     features=r.json()["features"]
     county_feature=next((f for f in features if str(f.get("id"))==fips),None)
@@ -35,8 +35,23 @@ def generate(fips, destination, marine=False):
     overlap=county.intersection(old_county).area/max(county.union(old_county).area,1e-12)
     if overlap<0.45:raise ValueError(f"NWS county polygon does not match FIPS reference (intersection/union={overlap:.2f})")
 
-    chosen=[]
+    surrounding=[]
     result=county
+    if neighbors:
+        # Detect shared boundaries, not counties merely inside a rectangular search.
+        from shapely.geometry import box
+        search=box(*old_county.buffer(0.35).bounds)
+        for feat in features:
+            fid=str(feat.get("id"))
+            if fid==fips:continue
+            geom=shape(feat["geometry"])
+            if geom.is_empty or not geom.is_valid or not geom.intersects(search):continue
+            overlap_boundary=old_county.boundary.intersection(geom.buffer(0.005)).length
+            if overlap_boundary<=0.025:continue
+            surrounding.append({"fips":fid,"geometry":geom})
+        if not surrounding:raise ValueError("No neighboring counties found; check county geometry")
+        result=unary_union([county]+[entry["geometry"] for entry in surrounding])
+    chosen=[]
     if marine:
         minx,miny,maxx,maxy=county.bounds
         params={"where":"1=1","geometry":f"{minx-0.04},{miny-0.04},{maxx+0.04},{maxy+0.04}",
@@ -60,10 +75,11 @@ def generate(fips, destination, marine=False):
             chosen.append({"id":code,"name":name,"geometry":geom})
         if not chosen:
             raise ValueError("No adjacent coastal marine zones returned; refusing silent county-only fallback")
-        result=unary_union([county]+[z["geometry"] for z in chosen])
+        result=unary_union([result]+[z["geometry"] for z in chosen])
         if not result.is_valid:result=result.buffer(0)
         if result.is_empty:raise ValueError("Combined county/marine geometry empty")
-    record={"type":"Feature","properties":{"fips":fips,"mode":"county_and_marine" if marine else "county",
+    record={"type":"Feature","properties":{"fips":fips,"mode":"county_and_neighbors_and_marine" if marine and neighbors else "county_and_marine" if marine else "county_and_neighbors" if neighbors else "county",
+            "surrounding_counties":[x["fips"] for x in surrounding],
             "marine_zones":[{"id":z["id"],"name":z["name"]} for z in chosen],
             "county_source":NWS_COUNTY_SOURCE,"county_reference_fips":COUNTY_SOURCE,"marine_source":MARINE_SOURCE if marine else None},
             "geometry":mapping(result)}
