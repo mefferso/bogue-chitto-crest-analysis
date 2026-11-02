@@ -1,6 +1,6 @@
 """Historical NOAA MRMS FLASH CREST county-grid extraction for GitHub Pages."""
 import csv, gzip, json, re, tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import boto3, numpy as np, requests, xarray as xr
 from botocore import UNSIGNED
@@ -9,20 +9,24 @@ from shapely.geometry import shape
 from shapely import contains_xy
 
 PRODUCT = "FLASH_CREST_MAXUNITSTREAMFLOW"
-START = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
-END = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+
 FACTOR = 35.31466672148859 / 0.3861021585424458
 LIMITS = (600, 1000, 2000, 5000)
-OUT = Path("data")
-OUT.mkdir(exist_ok=True)
+import os
+from datetime import timedelta
+START = datetime.fromisoformat(os.environ.get("EVENT_START_UTC", "2026-10-31T18:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
+END = datetime.fromisoformat(os.environ.get("EVENT_END_UTC", "2026-11-01T12:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
+FIPS = os.environ.get("EVENT_FIPS", "28109")
+OUT = Path(os.environ.get("EVENT_OUTPUT_DIR", "data"))
+OUT.mkdir(parents=True, exist_ok=True)
+if END <= START or END-START > timedelta(hours=72): raise ValueError("Event duration must be between 0 and 72 hours")
+
 
 def discover(s3):
     keys = []
     # S3 layouts have differed over time; explicitly probe likely products/paths.
-    prefixes = [
-        f"CONUS/{PRODUCT}_00.00/20261031/",
-        f"CONUS/{PRODUCT}_00.00/20261101/",
-    ]
+    prefixes = [f"CONUS/{PRODUCT}_00.00/{day:%Y%m%d}/" for day in
+                (START.date() + timedelta(days=i) for i in range((END.date()-START.date()).days+1))]
     for prefix in prefixes:
         print("Searching", prefix, flush=True)
         for page in s3.get_paginator("list_objects_v2").paginate(
@@ -30,7 +34,7 @@ def discover(s3):
         ):
             for item in page.get("Contents", []):
                 key = item["Key"]
-                m = re.search(r"(2026\d{4})-(\d{6})\.grib2\.gz$", key)
+                m = re.search(r"(\d{8})-(\d{6})\.grib2\.gz$", key)
                 if not m: continue
                 ts = datetime.strptime("".join(m.groups()), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
                 if START <= ts <= END:
@@ -52,7 +56,7 @@ county_geojson = requests.get(
     timeout=60
 )
 county_geojson.raise_for_status()
-feature = next(f for f in county_geojson.json()["features"] if str(f.get("id")) == "28109")
+feature = next(f for f in county_geojson.json()["features"] if str(f.get("id")) == FIPS)
 county = shape(feature["geometry"])
 s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 keys = discover(s3)
@@ -92,6 +96,8 @@ with tempfile.TemporaryDirectory() as temp:
                 ) / 2.589988110336
                 area = np.broadcast_to(area_per_row[:,None], mask.shape)
                 event_max = np.full(mask.shape, -np.inf)
+            if field.shape != (len(lat),len(lon)) or not np.allclose(lat[yi],latcut) or not np.allclose(lon[xi],loncut):
+                raise ValueError(f"CREST grid geometry changed at {ts}")
             data = field[np.ix_(yi, xi)] * FACTOR
             valid = mask & np.isfinite(data) & (data >= 0)
             good = np.where(valid, data, -np.inf)

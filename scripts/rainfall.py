@@ -1,20 +1,25 @@
 """Independent historical hourly MRMS MultiSensor QPE Pass 2 extraction."""
 import gzip,json,re,tempfile
 from datetime import datetime,timedelta,timezone
+import os
 from pathlib import Path
 import boto3,numpy as np,requests,xarray as xr
 from botocore import UNSIGNED
 from botocore.config import Config
 from shapely.geometry import shape
 from shapely import contains_xy
-START=datetime(2026,10,31,18,tzinfo=timezone.utc)
-END=datetime(2026,11,1,12,tzinfo=timezone.utc)
+START=datetime.fromisoformat(os.environ.get("EVENT_START_UTC","2026-10-31T18:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
+END=datetime.fromisoformat(os.environ.get("EVENT_END_UTC","2026-11-01T12:00:00+00:00").replace("Z","+00:00")).astimezone(timezone.utc)
+FIPS=os.environ.get("EVENT_FIPS","28109")
+OUT=Path(os.environ.get("EVENT_OUTPUT_DIR","data"))
+if END<=START or END-START>timedelta(hours=72) or START.minute or START.second or END.minute or END.second:
+    raise ValueError("Hourly QPE needs whole-hour UTC boundaries and duration <=72 hours")
 PRODUCT="MultiSensor_QPE_01H_Pass2"
 BUCKET="noaa-mrms-pds"
 def main():
     s3=boto3.client("s3",config=Config(signature_version=UNSIGNED))
     found={}
-    for day in (START.date(),END.date()):
+    for day in (START.date()+timedelta(days=i) for i in range((END.date()-START.date()).days+1)):
         prefix=f"CONUS/{PRODUCT}_00.00/{day:%Y%m%d}/"
         print("Searching",prefix,flush=True)
         for page in s3.get_paginator("list_objects_v2").paginate(Bucket=BUCKET,Prefix=prefix):
@@ -29,7 +34,7 @@ def main():
     if missing:raise SystemExit(f"Missing hourly QPE intervals: {missing}; refusing incomplete event accumulation")
     response=requests.get("https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json",timeout=60)
     response.raise_for_status()
-    county=shape(next(f for f in response.json()["features"] if str(f.get("id"))=="28109")["geometry"])
+    county=shape(next(f for f in response.json()["features"] if str(f.get("id"))==FIPS)["geometry"])
     latcut=loncut=mask=yi=xi=original_shape=None
     hourly=[]
     with tempfile.TemporaryDirectory() as temp:
@@ -78,13 +83,13 @@ def main():
                        "start_utc":START.isoformat(),"end_utc":END.isoformat(),"hourly_grids":len(expected),
                        "max_event_inches":mx(cum[-1]),"peak_1h_inches":p1["max_1h"],"peak_1h_utc":p1["utc"],
                        "peak_3h_inches":p3["max_3h"],"peak_3h_utc":p3["utc"],
-                       "limitations":"18Z Oct 31 to 12Z Nov 1, matching CREST temporal boundaries. First map frame is a zero accumulation baseline, not a 1-hour observation. Pass 2 QPE estimates, hourly ending times; county maxima need not share location."},
+                       "limitations":"Hourly Pass 2 QPE estimates; first map frame is zero baseline, not observed rainfall; county maxima may occur at different points."},
             "latitudes":latcut.tolist(),"longitudes":loncut.tolist(),
             "dlat":abs(float(np.median(np.diff(latcut)))),"dlon":abs(float(np.median(np.diff(loncut)))),
             "times":rows,"frames":{"cumulative":[encode(baseline)]+[encode(a) for a in cum],
                                    "one_hour":[None]+[encode(a) for a in cube],
                                    "three_hour":[None]+[encode(a) for a in rolling3]}}
-    out=Path("data/rainfall.json");out.parent.mkdir(exist_ok=True)
+    out=OUT/"rainfall.json";out.parent.mkdir(parents=True,exist_ok=True)
     out.write_text(json.dumps(result,separators=(",",":")))
     print("Wrote",out,"rain max",result["summary"]["max_event_inches"],flush=True)
 if __name__=="__main__":main()

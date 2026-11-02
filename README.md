@@ -25,3 +25,9 @@ Manual run: `pip install -r requirements.txt && python scripts/process.py`.
 - Dataset coverage, missing timestamps, provenance/source keys, and original raw files should be independently checked before publications.
 
 Uses Leaflet + OpenStreetMap (external tile/CDN services); Python dependencies are pinned loosely for portability.
+
+
+## Historical event library
+Run **Actions → Generate Historical Event → Run workflow**. Choose a county/parish and enter Central local start and end as `YYYY-MM-DD HH:00`. Maximum event length is 72 hours. Ambiguous fall-back DST hours are rejected so timestamps are never silently misidentified. Events are stored under `data/events/<date>_<county>/` and indexed in `data/events.json`. The original 2026 Pearl River event continues to load from the original `data/` files.
+
+Rainfall retrieval requires complete hourly NOAA AWS MRMS Pass 2 source grids. CREST processing is attempted independently and may be unavailable, in which case the rainfall-only case is retained. Dates before NOAA's AWS archive coverage (notably May 2019) require a separately validated legacy data source and are **not yet supported** by this workflow. Workflow-generated commits may require explicit GitHub Pages deployment if the site's publishing method doesn't react to GITHUB_TOKEN pushes. Existing standalone workflows remain available.
