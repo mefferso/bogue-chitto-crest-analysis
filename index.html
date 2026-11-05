@@ -37,11 +37,11 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="status">Loading archived data…</div>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
+<div class="panel"><label for="productOpacity">Product Opacity: <output id="productOpacityValue" for="productOpacity">85%</output></label><input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Product opacity"></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
 <select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
-<div class="panel"><label for="grayOpacity">Gray background opacity: <output id="grayOpacityValue" for="grayOpacity">45%</output></label><input id="grayOpacity" type="range" min="0" max="100" step="5" value="45" aria-label="Opacity of gray low-value CREST cells"><small>Only changes the gray 0–199 cfs/mi² cells; colored CREST pixels are unaffected.</small></div>
 </div><div id="rainControls" hidden><div class="panel"><label for="rainMode">Rainfall map layer</label><select id="rainMode"><option value="cumulative">Event accumulation through selected time</option><option value="one_hour">Rolling 1-hour rainfall</option><option value="three_hour">Rolling 3-hour rainfall</option></select></div><div class="stat"><span>Maximum event rainfall</span><strong id="rainEvent">—</strong><small>inches anywhere in county</small></div><div class="stat"><span>Maximum rolling 1-hour rainfall</span><strong id="rain1">—</strong><small id="rain1Time">—</small></div><div class="stat"><span>Maximum rolling 3-hour rainfall</span><strong id="rain3">—</strong><small id="rain3Time">—</small></div><div class="stat"><span>Peak at selected time / selected rainfall mode</span><strong id="rainCurrent">—</strong><small>inches anywhere in county</small></div><div class="panel"><b>Rainfall (inches)</b><div id="rainLegend" class="legend"></div></div><p>Hourly MRMS MultiSensor QPE Pass 2 (estimated, not a rain gauge). Three-hour totals are only available after three complete hourly intervals.</p></div>
 <div id="crestStatistics"><div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
 <div class="panel"><b>Simultaneous county area above threshold</b>
@@ -68,10 +68,30 @@ document.getElementById('legend').innerHTML=bins.map((b,i)=>'<span class="swatch
 const $=id=>document.getElementById(id);
 const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:1});
 const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
-let data,layer=L.layerGroup().addTo(map),grayLayer=L.layerGroup().addTo(map);
-let rainData=null,rainLoading=false;
+let data,layer=L.layerGroup().addTo(map);
+let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
 let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
 const pinLayer=L.layerGroup().addTo(map),samples=[];
+function activeTimes(){return $('product').value==='rainfall'?rainData?.times:data?.times}
+function nearestIndex(times,utc){
+ if(!times?.length)return 0;
+ const target=Date.parse(utc);
+ if(!Number.isFinite(target))return 0;
+ let best=0,distance=Math.abs(Date.parse(times[0].utc)-target);
+ for(let i=1;i<times.length;i++){
+  const next=Math.abs(Date.parse(times[i].utc)-target);
+  if(next<distance){best=i;distance=next}
+ }
+ return best;
+}
+function syncSliderToProduct(){
+ const times=activeTimes();
+ if(!times?.length){$('time').max=0;$('time').value=0;$('time').disabled=true;$('prev').disabled=true;$('next').disabled=true;return false}
+ const ix=nearestIndex(times,selectedUtc);
+ $('time').max=times.length-1;$('time').value=ix;
+ $('time').disabled=$('product').value==='rainfall'?false:$('mode').value==='ever';
+ return true;
+}
 function currentGrid(){
  const isRain=$('product').value==='rainfall';
  if(isRain){
@@ -189,13 +209,14 @@ function rainfallChart(){
 function drawRain(){
  if(!rainData)return;
  const ix=Number($('time').value),mode=$('rainMode').value,frame=rainData.frames[mode][ix];
- layer.clearLayers();grayLayer.clearLayers();
+ selectedUtc=rainData.times[ix]?.utc||selectedUtc;
+ layer.clearLayers();
  if(frame){
  const dl=rainData.dlat/2,dy=rainData.dlon/2;
  for(let r=0;r<frame.length;r++)for(let c=0;c<frame[r].length;c++){
    const v=frame[r][c];if(v===null)continue;
    const lat=rainData.latitudes[r],lon=rainData.longitudes[c];
-   const cell=L.rectangle([[lat-dl,lon-dy],[lat+dl,lon+dy]],{stroke:false,fillColor:rainColor(v),fillOpacity:v===0?0.12:0.84,interactive:true});
+   const cell=L.rectangle([[lat-dl,lon-dy],[lat+dl,lon+dy]],{stroke:false,fillColor:rainColor(v),fillOpacity:Number($('productOpacity').value)/100,interactive:true});
    cell.bindTooltip(fmt(v)+' inches');cell.addTo(layer);
  }}
  const row=rainData.times[ix];
@@ -207,50 +228,59 @@ function drawRain(){
 }
 function chooseProduct(){
  const rain=$('product').value==='rainfall';
- layer.clearLayers();grayLayer.clearLayers();pinLayer.clearLayers();
+ layer.clearLayers();pinLayer.clearLayers();
  $('crestControls').hidden=rain;$('rainControls').hidden=!rain;
  $('rainTimelinePanel').hidden=!rain;
  $('crestEventPeak').hidden=rain;$('crestStatistics').hidden=rain;
- $('grayOpacity').closest('.panel').hidden=rain;
- $('time').max=rain?(rainData?rainData.times.length-1:0):(data?data.times.length-1:0);
- $('time').disabled=rain?!rainData:!data;
  if(rain&&!rainData&&!rainLoading){
-  rainLoading=true;$('status').textContent='Loading historical rainfall…';
-  fetch(eventPath('rainfall.json'),{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('MRMS rainfall archive not processed. Run the separate rainfall workflow.');return r.json()}).then(d=>{
-   rainData=d;rainLoading=false;$('time').max=d.times.length-1;$('time').value=d.times.length-1;
+  rainLoading=true;$('status').textContent='Loading historical rainfall…';syncSliderToProduct();
+  const requestGeneration=eventGeneration,url=eventPath('rainfall.json');
+  fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('MRMS rainfall archive not processed. Run the separate rainfall workflow.');return r.json()}).then(d=>{
+   if(requestGeneration!==eventGeneration)return;
+   rainData=d;rainLoading=false;
    $('rainEvent').textContent=fmt(d.summary.max_event_inches)+' in';
    $('rain1').textContent=fmt(d.summary.peak_1h_inches)+' in';$('rain1Time').textContent=local(d.summary.peak_1h_utc);
    $('rain3').textContent=fmt(d.summary.peak_3h_inches)+' in';$('rain3Time').textContent=local(d.summary.peak_3h_utc);
-   rainfallChart();$('status').textContent='MRMS Pass 2 rainfall · '+d.times.length+' complete hourly grids';
-   drawRain();
-  }).catch(e=>{rainLoading=false;$('status').textContent='RAINFALL NOT LOADED: '+e.message});
+   if($('product').value==='rainfall'){
+    syncSliderToProduct();rainfallChart();$('status').textContent='MRMS Pass 2 rainfall · '+d.times.length+' complete hourly grids';drawRain();
+   }
+  }).catch(e=>{
+   if(requestGeneration!==eventGeneration)return;
+   rainLoading=false;if($('product').value==='rainfall')$('status').textContent='RAINFALL NOT LOADED: '+e.message;
+  });
   return;
  }
- if(!rain&&data){$('time').value=data.times.length-1;$('status').textContent='CREST · '+data.times.length+' archived grids';draw();}
- else if(rain&&rainData){$('time').value=rainData.times.length-1;$('status').textContent='MRMS Pass 2 rainfall · '+rainData.times.length+' hourly grids';drawRain();}
+ if(rain&&!rainData){
+  syncSliderToProduct();$('status').textContent='Loading historical rainfall…';return;
+ }
+ if(syncSliderToProduct()){
+  if(rain){$('status').textContent='MRMS Pass 2 rainfall · '+rainData.times.length+' hourly grids';drawRain()}
+  else{$('status').textContent='CREST · '+data.times.length+' archived grids';draw()}
+ }
 }
 $('product').addEventListener('change',chooseProduct);
 $('rainMode').addEventListener('change',drawRain);
 $('showCrest').addEventListener('change',rainfallChart);
-function updateGrayOpacity(){
- const opacity=Number($('grayOpacity').value)/100;
- $('grayOpacityValue').textContent=Math.round(opacity*100)+'%';
- grayLayer.eachLayer(cell=>cell.setStyle({fillOpacity:opacity}));
+function updateProductOpacity(){
+ const opacity=Number($('productOpacity').value)/100;
+ $('productOpacityValue').textContent=Math.round(opacity*100)+'%';
+ layer.eachLayer(cell=>cell.setStyle({fillOpacity:opacity}));
 }
-$('grayOpacity').addEventListener('input',updateGrayOpacity);
+$('productOpacity').addEventListener('input',updateProductOpacity);
 function draw(){
  if($('product').value==='rainfall'){drawRain();return}
  if(!data)return;
  const ix=Number($('time').value), isEver=$('mode').value==='ever', raster=isEver?data.ever_max:data.frames[ix];
- layer.clearLayers();grayLayer.clearLayers();
+ selectedUtc=data.times[ix]?.utc||selectedUtc;
+ layer.clearLayers();
  const dl=data.dlat/2,do_=data.dlon/2, bounds=[];
  for(let r=0;r<raster.length;r++){
   for(let c=0;c<raster[r].length;c++){
    const v=raster[r][c];if(v==null)continue;
+   if(v<bins[1])continue;
    const lat=data.latitudes[r],lon=data.longitudes[c],b=[[lat-dl,lon-do_],[lat+dl,lon+do_]];
-   const gray=v<bins[1];
-   const rect=L.rectangle(b,{stroke:false,fillColor:color(v),fillOpacity:gray?Number($('grayOpacity').value)/100:0.86,interactive:true});
-   rect.bindTooltip(fmt(v)+' cfs/mi²');rect.addTo(gray?grayLayer:layer);bounds.push([lat,lon]);
+   const rect=L.rectangle(b,{stroke:false,fillColor:color(v),fillOpacity:Number($('productOpacity').value)/100,interactive:true});
+   rect.bindTooltip(fmt(v)+' cfs/mi²');rect.addTo(layer);bounds.push([lat,lon]);
   }
  }
  $('timeLabel').textContent=local(data.times[ix].utc)+(isEver?' · map shows maximum over entire period':'');
@@ -265,16 +295,20 @@ $('time').addEventListener('input',draw);
 $('prev').onclick=()=>{$('time').value=Math.max(0,Number($('time').value)-1);draw()};
 $('next').onclick=()=>{$('time').value=Math.min(($('product').value==='rainfall'?rainData?.times.length:data?.times.length||1)-1,Number($('time').value)+1);draw()};
 function loadCrest(){
-return fetch(eventPath('dashboard.json'),{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data unavailable for this event.');return r.json()})
+const requestGeneration=eventGeneration,url=eventPath('dashboard.json');
+return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data unavailable for this event.');return r.json()})
 .then(d=>{
- data=d;$('time').max=d.times.length-1;$('time').value=d.times.length-1;
+ if(requestGeneration!==eventGeneration)return;
+ data=d;
+ if($('product').value==='crest')syncSliderToProduct();
  $('status').textContent='Archive processed · '+d.times.length+' grids (check source metadata for gaps)';
  $('status').style.color='#8beaaf';
  $('peak').textContent=fmt(d.summary.peak_cfs_mi2)+' cfs/mi²';
  $('peakTime').textContent=local(d.summary.peak_time_utc)+' · '+d.summary.peak_latlon.map(v=>v.toFixed(4)).join(', ');
- if($('product').value==='crest')draw();else rainfallChart();let minlat=Math.min(...d.latitudes),maxlat=Math.max(...d.latitudes),minlon=Math.min(...d.longitudes),maxlon=Math.max(...d.longitudes);
+ if($('product').value==='crest')draw();else if(rainData)rainfallChart();let minlat=Math.min(...d.latitudes),maxlat=Math.max(...d.latitudes),minlon=Math.min(...d.longitudes),maxlon=Math.max(...d.longitudes);
  map.fitBounds([[minlat,minlon],[maxlat,maxlon]]);
 }).catch(e=>{
+ if(requestGeneration!==eventGeneration)return;
  $('status').textContent='ARCHIVE NOT LOADED: '+e.message;
  $('peak').textContent='Not verified';
  $('peakTime').textContent='CREST not available for selected event.';
@@ -283,6 +317,7 @@ return fetch(eventPath('dashboard.json'),{cache:'no-store'}).then(r=>{if(!r.ok)t
 
 // Preserve the original legacy event files; load new events only from their isolated directories.
 async function selectEvent(event){
+ const selectionGeneration=++eventGeneration;
  activeEvent=event;
  boundaryLayer.clearLayers();
  if(event.boundary_file){
@@ -290,12 +325,14 @@ async function selectEvent(event){
    const response=await fetch(event.boundary_file,{cache:'no-store'});
    if(!response.ok)throw Error('Boundary not published');
    const geo=await response.json();
+   if(selectionGeneration!==eventGeneration)return;
    boundaryLayer.addData(geo);
    if(boundaryLayer.getBounds().isValid())map.fitBounds(boundaryLayer.getBounds(),{padding:[10,10]});
   }catch(error){console.warn('Could not load archived event boundary',error)}
  }
- data=null;rainData=null;rainLoading=false;chartHoverIndex=null;
- samples.length=0;pinLayer.clearLayers();layer.clearLayers();grayLayer.clearLayers();
+ if(selectionGeneration!==eventGeneration)return;
+ data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
+ samples.length=0;pinLayer.clearLayers();layer.clearLayers();
  $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';
  $('eventHeading').textContent=event.name.replace(/, (LA|MS)$/,'')+' · Extreme Rainfall event';
  $('eventSubtitle').textContent=local(event.start_utc)+' – '+local(event.end_utc)+' | NOAA MRMS QPE / FLASH CREST';
@@ -308,6 +345,7 @@ async function selectEvent(event){
  $('showCrest').checked=false;
  if(event.bounds)map.fitBounds(event.bounds);
  if(event.products?.crest)await loadCrest();
+ if(selectionGeneration!==eventGeneration)return;
  chooseProduct();
  if(!event.products?.crest && !event.products?.rainfall)$('status').textContent='No event products available';
 }
