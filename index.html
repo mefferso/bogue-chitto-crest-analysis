@@ -30,6 +30,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 .timeline-legend{gap:16px;margin:6px 0 12px}#chartReadout{min-height:23px;font-size:13px;color:#dce7f6;font-variant-numeric:tabular-nums}
 @media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}#rainTimelinePanel{padding:14px 10px}.timeline-head h2{font-size:17px}}
 .drainage-basin-line{pointer-events:stroke!important}
+#map.basin-selection-active .drainage-basin-line{pointer-events:all!important;cursor:pointer}
 #basinStatus,.basin-note{display:block;margin-top:6px}
 .basin-name{background:transparent;border:0;box-shadow:none;color:#ecfffb;font-size:11px;font-weight:600;line-height:1.2;text-align:center;white-space:normal;width:max-content;max-width:140px;padding:2px 3px;pointer-events:none!important;text-shadow:-1px -1px 0 #101827,1px -1px 0 #101827,-1px 1px 0 #101827,1px 1px 0 #101827,0 0 4px #101827}
 .basin-name:before{display:none}
@@ -147,12 +148,13 @@ function selectBasinForAnalysis(feature,name,level){
  areaDrawing.reset();setAnalysisArea(feature.geometry,name+' · HUC'+level+' '+huc,'basin');$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
  if(!$('analysisAreaMessage').textContent)showAreaMessage('Basin outline is complete; statistics use only available archived grid cells whose centers fall inside it.');
 }
-function resetAnalysisArea(){areaDrawing.reset();$('analysisAreaMode').value='entire';setAnalysisArea(null,'Entire Event');}
+function resetAnalysisArea(){areaDrawing.reset();$('analysisAreaMode').value='entire';basinOverlay.setSelectionMode(false);setAnalysisArea(null,'Entire Event');}
 function beginSelectedAreaMode(){
- const mode=$('analysisAreaMode').value;if(mode==='entire'){resetAnalysisArea();return}
+ const mode=$('analysisAreaMode').value;basinOverlay.setSelectionMode(mode==='basin');
+ if(mode==='entire'){resetAnalysisArea();return}
  if(mode==='rectangle'||mode==='polygon'){areaDrawing.start(mode);return}
- areaDrawing.reset();$('drainageBasins').checked=true;$('drainageBasins').dispatchEvent(new Event('change'));
- showAreaMessage('Click a visible HUC10 or HUC12 outline to use that watershed as the rainfall analysis area.');
+ areaDrawing.reset();if(!$('drainageBasins').checked){$('drainageBasins').checked=true;$('drainageBasins').dispatchEvent(new Event('change'))}
+ showAreaMessage('Click anywhere inside a labeled HUC10 or HUC12 watershed to analyze that basin.');
 }
 function drawReplacementArea(){const mode=$('analysisAreaMode').value;if(['rectangle','polygon'].includes(mode))areaDrawing.start(mode)}
 function editAnalysisArea(){if(analysisGeometry&&analysisAreaType)areaDrawing.edit(analysisGeometry,analysisAreaType)}
@@ -399,7 +401,7 @@ async function selectEvent(event){
  activeEvent=event;
  data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
  rainSelection=null;crestSelection=null;rainAnalysis=null;crestAnalysis=null;
- areaDrawing.reset();analysisGeometry=null;analysisAreaName='Entire Event';analysisAreaType=null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();$('analysisAreaMode').value='entire';$('analysisAreaSummary').textContent='Entire Event · archived MRMS grid coverage';$('chartAreaName').textContent='Analysis area: Entire Event';$('analysisAreaDetails').textContent='Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.';$('analysisAreaMessage').textContent='';$('resetAnalysisArea').hidden=true;$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
+ areaDrawing.reset();basinOverlay.setSelectionMode(false);analysisGeometry=null;analysisAreaName='Entire Event';analysisAreaType=null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();$('analysisAreaMode').value='entire';$('analysisAreaSummary').textContent='Entire Event · archived MRMS grid coverage';$('chartAreaName').textContent='Analysis area: Entire Event';$('analysisAreaDetails').textContent='Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.';$('analysisAreaMessage').textContent='';$('resetAnalysisArea').hidden=true;$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
  samples.length=0;pinLayer.clearLayers();layer.clearLayers();
  $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';
  $('eventHeading').textContent=event.name.replace(/, (LA|MS)$/,'')+' · Extreme Rainfall event';
