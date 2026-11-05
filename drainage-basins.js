@@ -1,7 +1,7 @@
 /* Independent geographic reference overlay. No rainfall/CREST state is mutated. */
 (function () {
  'use strict';
- window.createDrainageBasins = function ({map, L, toggle, status, fetcher = fetch}) {
+ window.createDrainageBasins = function ({map, L, toggle, status, fetcher = fetch, onBasinClick = () => {}}) {
   const pane = map.createPane('drainageBasins');
   pane.style.zIndex = '450';
   const labelPane = map.createPane('basinLabels');
@@ -9,7 +9,7 @@
   labelPane.style.pointerEvents = 'none';
   const renderer = L.svg({pane:'drainageBasins', padding:0.3});
   const cache = new Map();
-  let manifestPromise = null, event = null, generation = 0, visible = null;
+  let manifestPromise = null, event = null, generation = 0, visible = null, selectionMode = false;
   let labels = [];
   function basinName(properties) {
    const name = String(properties.name ?? '').replace(/\s+/g,' ').trim();
@@ -36,6 +36,10 @@
     const element = layer.getTooltip()?.getElement();
     if (element) element.style.visibility = 'hidden';
    }
+  }
+  function applySelectionMode() {
+   map.getContainer().classList.toggle('basin-selection-active', selectionMode && toggle.checked);
+   if (visible) visible.eachLayer(layer => layer.setStyle({fill:selectionMode, fillColor:'#55d9ce', fillOpacity:selectionMode?0.015:0}));
   }
   function clear() {
    hideLabels();
@@ -75,12 +79,13 @@
     visible = L.geoJSON(geo, {
      pane:'drainageBasins', renderer, bubblingMouseEvents:false,
      attribution:'<a href="https://www.usgs.gov/national-hydrography/watershed-boundary-dataset">USGS Watershed Boundary Dataset</a>',
-     style:{color:'#55d9ce', weight:1.6, opacity:0.95, fill:false, className:'drainage-basin-line'},
+     style:{color:'#55d9ce', weight:1.6, opacity:0.95, fill:selectionMode, fillColor:'#55d9ce', fillOpacity:selectionMode?0.015:0, className:'drainage-basin-line'},
      onEachFeature(feature, layer) {
       const content = document.createElement('span');
       const name = basinName(feature.properties);
       content.textContent = name+' · HUC'+level+': '+feature.properties.huc;
       layer.bindPopup(content);
+      if (layer.on) layer.on('click', () => {if(selectionMode) {onBasinClick(feature, name, level);map.closePopup();}});
       const label = document.createElement('span');
       label.textContent = name;
       layer.bindTooltip(label, {permanent:true, direction:'center', pane:'basinLabels',
@@ -88,6 +93,7 @@
       labels.push({layer, level});
      }
     }).addTo(map);
+    applySelectionMode();
     positionLabels();
     status.textContent='USGS WBD · HUC'+level+' · '+geo.features.length+' hydrologic units';
    } catch (error) {
@@ -102,6 +108,9 @@
   // never reloads or replaces basin geometry.
   map.on('zoomend',positionLabels);
   map.on('moveend',positionLabels);
-  return {setEvent(next) {event=next;return update();}};
+  return {
+   setEvent(next) {event=next;return update();},
+   setSelectionMode(active) {selectionMode=!!active;applySelectionMode();}
+  };
  };
 })();

@@ -7,9 +7,9 @@ function setup(fetcher){
  const context={console,document:{createElement:()=>({textContent:''})},window:{},Map,fetch:fetcher};
  vm.runInNewContext(fs.readFileSync('drainage-basins.js','utf8'),context);
  const listeners={},layers=new Set();
- const map={zoom:10,createPane:()=>({style:{}}),getZoom(){return this.zoom},on(n,f){listeners[n]=f},addLayer(l){layers.add(l)},removeLayer(l){layers.delete(l)}};
+ const map={zoom:10,createPane:()=>({style:{}}),getContainer:()=>({classList:{toggle(){}}}),getZoom(){return this.zoom},on(n,f){listeners[n]=f},addLayer(l){layers.add(l)},removeLayer(l){layers.delete(l)}};
  const toggle={checked:false,addEventListener(n,f){this.change=f}},status={textContent:''};
- const L={svg:()=>({}),geoJSON(data,options){return {data,options,addTo(m){m.addLayer(this);return this}}}};
+ const L={svg:()=>({}),geoJSON(data,options){return {data,options,addTo(m){m.addLayer(this);return this},eachLayer(fn){fn({setStyle(){}})}}}};
  const controller=context.window.createDrainageBasins({map,L,toggle,status,fetcher});
  return {map,toggle,status,controller,listeners,layers};
 }

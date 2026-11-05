@@ -22,7 +22,7 @@ button:disabled{opacity:.3}input[type=range]{width:100%;accent-color:#77dcff}
 a{color:#96d9ff}#status{font-weight:600;color:#f6c079}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-child,td:first-child{text-align:left}
-#vizColumn{min-width:0}#rainTimelinePanel{padding:18px 22px 25px;background:#152032;border-top:1px solid #334154}
+#vizColumn{min-width:0;position:relative}#rainTimelinePanel{padding:18px 22px 25px;background:#152032;border-top:1px solid #334154}
 #rainTimelinePanel[hidden]{display:none}
 .timeline-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .timeline-head h2{margin:0 0 5px;font-size:20px}.compare-check{white-space:nowrap;font-size:13px;display:flex;align-items:center;gap:7px}
@@ -30,15 +30,33 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 .timeline-legend{gap:16px;margin:6px 0 12px}#chartReadout{min-height:23px;font-size:13px;color:#dce7f6;font-variant-numeric:tabular-nums}
 @media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}#rainTimelinePanel{padding:14px 10px}.timeline-head h2{font-size:17px}}
 .drainage-basin-line{pointer-events:stroke!important}
+#map.basin-selection-active .drainage-basin-line{pointer-events:all!important;cursor:pointer}
 #basinStatus,.basin-note{display:block;margin-top:6px}
 .basin-name{background:transparent;border:0;box-shadow:none;color:#ecfffb;font-size:11px;font-weight:600;line-height:1.2;text-align:center;white-space:normal;width:max-content;max-width:140px;padding:2px 3px;pointer-events:none!important;text-shadow:-1px -1px 0 #101827,1px -1px 0 #101827,-1px 1px 0 #101827,1px 1px 0 #101827,0 0 4px #101827}
 .basin-name:before{display:none}
+.analysis-area-line{pointer-events:none!important}
+.leaflet-analysisAreaApplied-pane canvas,.leaflet-analysisAreaDraft-pane canvas{pointer-events:none!important}
+.area-drawing-toolbar{position:absolute;z-index:1000;top:14px;right:14px;max-width:min(460px,calc(100% - 28px));padding:10px;background:#152032f2;border:1px solid #536a85;border-radius:12px;box-shadow:0 8px 28px #0008;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.area-drawing-toolbar[hidden]{display:none}
+.area-drawing-toolbar small{flex-basis:100%;line-height:1.35}
+.area-drawing-active{cursor:crosshair}
+.area-drawing-vertex,.area-drawing-midpoint,.area-drawing-move{background:#152032;border:2px solid #ffe08a;border-radius:50%;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800;box-shadow:0 1px 6px #0009}
+.area-drawing-vertex.is-first{background:#fff;color:#152032;border-color:#fff;font-size:9px}
+.area-drawing-vertex.is-selected{background:#ffcf72;color:#152032}
+.area-drawing-midpoint{width:18px!important;height:18px!important;border:1px solid #a8c0d9;color:#dce8f4;background:#273d58;font-size:14px}
+.area-drawing-move{width:26px!important;height:26px!important;border-radius:8px;background:#273d58}
+.analysis-area-label{background:#152032;color:#fff;border:1px solid #ffd166;border-radius:6px;padding:3px 7px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 5px #0009}
+.analysis-area-label:before{display:none}
+.analysis-area-note{display:block;margin-top:6px;line-height:1.4}
+.area-selection{background:#142238;border:1px solid #44617f;border-radius:9px;padding:10px;margin-top:8px}
+#analysisAreaSummary{font-weight:650;color:#fff}
 </style></head>
 <body><header><h1 id="eventHeading">Pearl River County · Extreme Rainfall event</h1>
 <p id="eventSubtitle">October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow</p></header>
 <main><aside>
 <div class="panel"><label for="eventSelect">Historical event</label> <select id="eventSelect" aria-label="Historical event"><option>Loading events…</option></select></div>
 <div id="status">Loading archived data…</div>
+<section class="panel" aria-label="Rainfall Analysis Area"><b>Rainfall Analysis Area</b><select id="analysisAreaMode" aria-label="Rainfall Analysis Area" style="display:block;width:100%;margin-top:7px"><option value="entire">Entire Event</option><option value="rectangle">Draw Rectangle</option><option value="polygon">Draw Polygon</option><option value="basin">Select Drainage Basin</option></select><div class="area-selection"><div id="analysisAreaSummary" aria-live="polite">Entire Event · archived MRMS grid coverage</div><small id="analysisAreaDetails" class="analysis-area-note">Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.</small></div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px"><button id="editAnalysisArea" type="button" hidden>Edit Shape</button><button id="repeatAreaDraw" type="button" hidden>Draw replacement</button><button id="resetAnalysisArea" type="button" hidden>Reset to Entire Event</button></div><small id="analysisAreaMessage" role="status" aria-live="polite" class="analysis-area-note"></small></section>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
 <div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD HUC10 watershed boundaries and names at every zoom level; overlapping labels are hidden. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
@@ -47,7 +65,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
 <select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
-</div><div id="rainControls" hidden><div class="panel"><label for="rainMode">Rainfall map layer</label><select id="rainMode"><option value="cumulative">Event accumulation through selected time</option><option value="one_hour">Rolling 1-hour rainfall</option><option value="three_hour">Rolling 3-hour rainfall</option></select></div><div class="stat"><span>Maximum event rainfall</span><strong id="rainEvent">—</strong><small>inches anywhere in county</small></div><div class="stat"><span>Maximum rolling 1-hour rainfall</span><strong id="rain1">—</strong><small id="rain1Time">—</small></div><div class="stat"><span>Maximum rolling 3-hour rainfall</span><strong id="rain3">—</strong><small id="rain3Time">—</small></div><div class="stat"><span>Peak at selected time / selected rainfall mode</span><strong id="rainCurrent">—</strong><small>inches anywhere in county</small></div><div class="panel"><b>Rainfall (inches)</b><div id="rainLegend" class="legend"></div></div><p>Hourly MRMS MultiSensor QPE Pass 2 (estimated, not a rain gauge). Three-hour totals are only available after three complete hourly intervals.</p></div>
+</div><div id="rainControls" hidden><div class="panel"><label for="rainMode">Rainfall map layer</label><select id="rainMode"><option value="cumulative">Event accumulation through selected time</option><option value="one_hour">Rolling 1-hour rainfall</option><option value="three_hour">Rolling 3-hour rainfall</option></select></div><div class="stat"><span>Maximum event rainfall</span><strong id="rainEvent">—</strong><small id="rainEventNote">inches anywhere in county</small></div><div class="stat"><span>Maximum rolling 1-hour rainfall</span><strong id="rain1">—</strong><small id="rain1Time">—</small></div><div class="stat"><span>Maximum rolling 3-hour rainfall</span><strong id="rain3">—</strong><small id="rain3Time">—</small></div><div class="stat"><span>Peak at selected time / selected rainfall mode</span><strong id="rainCurrent">—</strong><small id="rainCurrentNote">inches anywhere in county</small></div><div class="stat"><span>Selected-area mean event rainfall</span><strong id="rainMeanEvent">—</strong><small id="rainCoverageNote">—</small></div><div class="panel"><b>Rainfall (inches)</b><div id="rainLegend" class="legend"></div></div><p>Hourly MRMS MultiSensor QPE Pass 2 (estimated, not a rain gauge). Three-hour totals are only available after three complete hourly intervals.</p></div>
 <div id="crestStatistics"><div class="stat"><span>Peak at selected time</span><strong id="currentPeak">—</strong><small>cfs/mi²</small></div>
 <div class="panel"><b>Simultaneous county area above threshold</b>
 <table><thead><tr><th>Threshold</th><th>At time</th><th>Ever*</th></tr></thead><tbody id="areas"></tbody></table>
@@ -56,12 +74,12 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 </div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a value pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
 </aside><section id="vizColumn"><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div>
-<section id="rainTimelinePanel" aria-label="Rainfall and CREST time series">
-<div class="timeline-head"><div><h2 id="timelineHeading">Rainfall evolution · Pearl River County</h2><small>County maximum at each time; maxima may occur at different grid cells. CREST Unit Streamflow is modeled, not measured discharge.</small></div><label class="compare-check"><input type="checkbox" id="showCrest"> Compare CREST Unit Streamflow (right axis)</label></div>
-<div id="rainChartMessage" role="status" aria-live="polite">Loading MRMS rainfall timeline…</div><div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST Unit Streamflow (right axis)</span></div>
+<div id="areaDrawingToolbar" class="area-drawing-toolbar" hidden role="toolbar" aria-label="Analysis area drawing controls"><button id="finishAreaPolygon" type="button" hidden>Finish Polygon</button><button id="undoAreaPoint" type="button" hidden>Undo Last Point</button><button id="removeAreaVertex" type="button" hidden>Remove Vertex</button><button id="cancelAreaDrawing" type="button" hidden>Cancel</button><button id="cancelAreaChanges" type="button" hidden>Cancel Changes</button><button id="applyAreaDrawing" type="button" hidden>Apply Analysis</button><small id="areaDrawingHint" aria-live="polite"></small></div><section id="rainTimelinePanel" aria-label="Rainfall and CREST time series">
+<div class="timeline-head"><div><h2 id="timelineHeading">Rainfall evolution · Pearl River County</h2><small>Maximum series may occur at a different grid cell each time; these are not fixed-location observations. Area averages weight valid cells by grid-cell area. CREST is modeled, not measured discharge.</small><div id="chartAreaName"><b>Analysis area:</b> Entire Event</div></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label>Rainfall series <select id="rainChartStatistic" aria-label="Rainfall chart statistic"><option value="maximum">Maximum</option><option value="mean">Area Average</option></select></label><label class="compare-check"><input type="checkbox" id="showCrest" checked> Compare CREST Unit Streamflow (right axis)</label></div></div>
+<div id="rainChartMessage" role="status" aria-live="polite">Loading MRMS rainfall timeline…</div><div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● Modeled maximum CREST unit streamflow in selected area (cfs/mi²)</span></div>
 <div id="chartReadout" aria-live="polite">Hover or select a time to examine the rainfall evolution.</div>
 </section></section></main>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="drainage-basins.js"></script><script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="analysis-area.js"></script><script src="analysis-area-drawing.js"></script><script src="drainage-basins.js"></script><script>
 const map=L.map('map',{preferCanvas:true}).setView([30.69,-89.62],10);
 let activeEvent={id:'2026-10-31_pearl-river-ms',name:'Pearl River County, MS',label:'Oct 31, 2026 — Pearl River County, MS',start_utc:'2026-10-31T18:00:00Z',end_utc:'2026-11-01T12:00:00Z',data_dir:'data',products:{crest:true,rainfall:true}};
 const eventPath=file=>activeEvent.data_dir+'/'+file;
@@ -76,8 +94,75 @@ const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',da
 let data,layer=L.layerGroup().addTo(map);
 let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
 let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
-const basinOverlay=createDrainageBasins({map,L,toggle:$('drainageBasins'),status:$('basinStatus')});
+const basinOverlay=createDrainageBasins({map,L,toggle:$('drainageBasins'),status:$('basinStatus'),onBasinClick:selectBasinForAnalysis});
+map.createPane('analysisAreaApplied');map.getPane('analysisAreaApplied').style.zIndex='470';
+const analysisAreaLayer=L.geoJSON(null,{pane:'analysisAreaApplied',style:{color:'#ffd166',weight:3,opacity:1,fillColor:'#ffd166',fillOpacity:.08},interactive:false}).addTo(map);
+const analysisAreaLabel=L.layerGroup().addTo(map);
+const areaAnalysis=createRainfallAreaAnalysis();
+let analysisGeometry=null,analysisAreaName='Entire Event',analysisAreaType=null,rainSelection=null,crestSelection=null,rainAnalysis=null,crestAnalysis=null;
 const pinLayer=L.layerGroup().addTo(map),samples=[];
+function showAreaMessage(message=''){ $('analysisAreaMessage').textContent=message; }
+function setAnalysisArea(geometry,name,type=null){
+ analysisGeometry=geometry;analysisAreaName=name||'Selected area';analysisAreaType=geometry?type:null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();
+ const shape=geometry?.type==='Feature'?geometry.geometry:geometry;
+ if(shape){analysisAreaLayer.addData({type:'Feature',properties:{},geometry:shape});const bounds=analysisAreaLayer.getBounds();if(bounds.isValid()){const safeName=analysisAreaName.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));L.marker(bounds.getCenter(),{pane:'analysisAreaApplied',interactive:false,keyboard:false,icon:L.divIcon({className:'analysis-area-label',html:safeName,iconSize:null})}).addTo(analysisAreaLabel)}}
+ $('analysisAreaSummary').textContent=analysisAreaName+(geometry?' · custom geometry':' · archived MRMS grid coverage');
+ $('chartAreaName').textContent='Analysis area: '+analysisAreaName;$('resetAnalysisArea').hidden=!geometry;
+ $('editAnalysisArea').hidden=!(geometry&&analysisAreaType&&['rectangle','polygon'].includes(analysisAreaType));
+ $('repeatAreaDraw').hidden=!(geometry&&['rectangle','polygon'].includes(analysisAreaType));showAreaMessage('');refreshAreaAnalysis();
+}
+function refreshAreaAnalysis(){
+ if(rainData){rainSelection=areaAnalysis.mask(rainData,analysisGeometry);rainAnalysis=areaAnalysis.rainfall(rainData,rainSelection)}else{rainSelection=rainAnalysis=null}
+ if(data){crestSelection=areaAnalysis.mask(data,analysisGeometry);crestAnalysis=areaAnalysis.crest(data,crestSelection)}else{crestSelection=crestAnalysis=null}
+ updateAnalysisAreaStats();if(rainData)rainfallChart();if($('product').value==='rainfall'&&rainData)drawRain();
+}
+function updateAnalysisAreaStats(){
+ if(!rainData||!rainAnalysis){
+  if(analysisGeometry){const area=areaAnalysis.geometryArea(analysisGeometry),crestCells=crestSelection?.cells.length||0,sqmi=area?area/2589988.110336:null,coverage=crestSelection?.coverage;
+   $('analysisAreaDetails').textContent=(analysisAreaType==='rectangle'?'Rectangle':analysisAreaType==='polygon'?'Polygon':'Drainage basin')+' · approximately '+(sqmi==null?'area unavailable':sqmi.toFixed(1)+' sq mi')+' · '+crestCells+' CREST grid cells selected'+(coverage==null?'':' · archive coverage '+coverage.toFixed(1)+'%')+'. Rainfall archive unavailable for this event.'}
+  return;
+ }
+ const inches=value=>value==null?'—':fmt(value)+' in';
+ const currentIndex=nearestIndex(rainData.times,selectedUtc),row=rainAnalysis.series[currentIndex],full=analysisGeometry===null,summary=rainAnalysis;
+ const pick=(custom,whole)=>full?whole:custom;
+ $('rainEvent').textContent=inches(pick(summary.maxEvent?.value,rainData.summary.max_event_inches));
+ $('rain1').textContent=inches(pick(summary.max1?.value,rainData.summary.peak_1h_inches));$('rain1Time').textContent=local(pick(summary.max1?.utc,rainData.summary.peak_1h_utc));
+ $('rain3').textContent=inches(pick(summary.max3?.value,rainData.summary.peak_3h_inches));$('rain3Time').textContent=local(pick(summary.max3?.utc,rainData.summary.peak_3h_utc));
+ const field={cumulative:'max_cumulative',one_hour:'max_1h',three_hour:'max_3h'}[$('rainMode').value];
+ $('rainCurrent').textContent=inches(pick(row?.[field],rainData.times[currentIndex]?.[field]));
+ $('rainEventNote').textContent=full?'inches anywhere in the archived event grid':'highest valid cell in selected area';$('rainCurrentNote').textContent=$('rainEventNote').textContent;
+ $('rainMeanEvent').textContent=inches(summary.meanEvent);
+ const valid=row?.[{cumulative:'validCells',one_hour:'validCells_1h',three_hour:'validCells_3h'}[$('rainMode').value]]||0,total=summary.gridCells;
+ $('rainCoverageNote').textContent=total?valid+' valid rainfall grid cells at selected time · '+(full?'entire archived grid':summary.coverage.toFixed(1)+'% approximate area coverage'):'No archived rainfall cells fall inside this selection.';
+ if(!analysisGeometry)$('analysisAreaDetails').textContent=total?total+' archived MRMS grid cells available; means weight valid cell values by latitude-adjusted cell area.':'No archived rainfall grid cells are available.';
+ else {
+  const area=areaAnalysis.geometryArea(analysisGeometry),crestCells=crestSelection?.cells.length||0,km2=area?area/2589988.110336:null;
+  const basin=/HUC\d+\s+(.+)/.exec(analysisAreaName),coverage=summary.coverage.toFixed(1);
+  $('analysisAreaDetails').textContent=(analysisAreaType==='rectangle'?'Rectangle':analysisAreaType==='polygon'?'Polygon':'Drainage basin')+' · approximately '+(km2==null?'area unavailable':km2.toFixed(1)+' sq mi')+' · '+total+' MRMS / '+crestCells+' CREST grid cells selected · archive coverage '+coverage+'%'+(basin?' · '+basin[1]:'')+'. Means weight valid cell values by latitude-adjusted cell area.';
+ }
+ if(!total)showAreaMessage('No archived rainfall grid cells are selected. Choose a larger area or reset to Entire Event.');
+ else if(!valid)showAreaMessage('No valid rainfall cells are available at the selected timestamp; event statistics use valid archived observations only.');
+ else if(analysisGeometry&&summary.coverage<99)showAreaMessage('Archived rainfall data cover only part of this area (approximately '+summary.coverage.toFixed(1)+'% by selected grid-cell area). Rainfall is not extrapolated outside the archive.');
+}
+function selectBasinForAnalysis(feature,name,level){
+ if($('analysisAreaMode').value!=='basin')return;const huc=feature?.properties?.huc;if(!huc)return;
+ areaDrawing.reset();setAnalysisArea(feature.geometry,name+' · HUC'+level+' '+huc,'basin');$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
+ if(!$('analysisAreaMessage').textContent)showAreaMessage('Basin outline is complete; statistics use only available archived grid cells whose centers fall inside it.');
+}
+function resetAnalysisArea(){areaDrawing.reset();$('analysisAreaMode').value='entire';basinOverlay.setSelectionMode(false);setAnalysisArea(null,'Entire Event');}
+function beginSelectedAreaMode(){
+ const mode=$('analysisAreaMode').value;basinOverlay.setSelectionMode(mode==='basin');
+ if(mode==='entire'){resetAnalysisArea();return}
+ if(mode==='rectangle'||mode==='polygon'){areaDrawing.start(mode);return}
+ areaDrawing.reset();if(!$('drainageBasins').checked){$('drainageBasins').checked=true;$('drainageBasins').dispatchEvent(new Event('change'))}
+ showAreaMessage('Click anywhere inside a labeled HUC10 watershed to analyze that basin.');
+}
+function drawReplacementArea(){const mode=$('analysisAreaMode').value;if(['rectangle','polygon'].includes(mode))areaDrawing.start(mode)}
+function editAnalysisArea(){if(analysisGeometry&&analysisAreaType)areaDrawing.edit(analysisGeometry,analysisAreaType)}
+const areaDrawing=createAnalysisAreaDrawing({map,L,toolbar:$('areaDrawingToolbar'),message:$('areaDrawingHint'),sidebarMessage:$('analysisAreaMessage'),finishButton:$('finishAreaPolygon'),undoButton:$('undoAreaPoint'),cancelButton:$('cancelAreaDrawing'),applyButton:$('applyAreaDrawing'),cancelChangesButton:$('cancelAreaChanges'),removeVertexButton:$('removeAreaVertex'),validatePolygon:areaAnalysis.validatePolygon,onApply:(geometry,type)=>setAnalysisArea(geometry,type==='rectangle'?'Drawn rectangle':'Drawn polygon',type),onCancel:()=>{showAreaMessage('');updateAnalysisAreaStats()},onDraftStart:({editingExisting})=>{if(editingExisting)showAreaMessage('Editing a draft. The applied shape and statistics remain active until Apply Analysis.')}});
+$('analysisAreaMode').addEventListener('change',beginSelectedAreaMode);$('resetAnalysisArea').addEventListener('click',resetAnalysisArea);
+$('repeatAreaDraw').addEventListener('click',drawReplacementArea);$('editAnalysisArea').addEventListener('click',editAnalysisArea);
+$('rainChartStatistic').addEventListener('change',rainfallChart);
 function activeTimes(product=$('product').value){return product==='rainfall'?rainData?.times:data?.times}
 function nearestIndex(times,utc){
  if(!times?.length)return 0;
@@ -131,6 +216,8 @@ function updatePins(){
  $('pinCount').textContent=samples.length+' pin'+(samples.length===1?'':'s');
 }
 map.on('click',e=>{
+ if(areaDrawing.mapClick(e.latlng))return;
+ if($('analysisAreaMode').value==='basin')return;
  if(!sampleAt(e.latlng))return;
  samples.push({lat:e.latlng.lat,lng:e.latlng.lng});updatePins();
 });
@@ -142,83 +229,48 @@ $('rainLegend').innerHTML=rainBins.map((n,i)=>'<div class="legend-item"><span cl
 let chartHoverIndex=null;
 function rainfallChart(){
  if(!rainData)return;
- const rows=rainData.times,W=1100,H=380,left=66,right=78,top=25,bottom=65;
- const ts=rows.map(r=>Date.parse(r.utc));
- const t0=ts[0],t1=ts[ts.length-1],span=Math.max(1,t1-t0);
- const x=t=>left+(t-t0)/span*(W-left-right);
+ const original=rainData.times;
+ const calculated=rainAnalysis?.series||[];
+ const rows=original.map((source,i)=>analysisGeometry===null?{...source,mean_cumulative:calculated[i]?.mean_cumulative,mean_1h:calculated[i]?.mean_1h,mean_3h:calculated[i]?.mean_3h}:{...source,...calculated[i]});
+ const W=1100,H=380,left=66,right=78,top=25,bottom=65;
+ const ts=rows.map(r=>Date.parse(r.utc)),t0=ts[0],t1=ts[ts.length-1],span=Math.max(1,t1-t0),x=t=>left+(t-t0)/span*(W-left-right);
+ const statistic=$('rainChartStatistic').value,fields=statistic==='mean'?['mean_cumulative','mean_1h','mean_3h']:['max_cumulative','max_1h','max_3h'];
  const crestOn=$('showCrest').checked&&data?.times?.length;
- const rainfallMax=Math.max(1,...rows.flatMap(r=>[r.max_cumulative,r.max_1h,r.max_3h].filter(Number.isFinite)));
- const rainCeiling=Math.ceil(rainfallMax/2)*2;
- const crestRows=crestOn?data.times.filter(r=>Number.isFinite(r.max_cfs_mi2)&&Date.parse(r.utc)>=t0&&Date.parse(r.utc)<=t1):[];
- const crestMax=Math.max(1,...crestRows.map(r=>r.max_cfs_mi2));
- const crestCeiling=Math.ceil(crestMax/1000)*1000;
- const yRain=v=>H-bottom-v/rainCeiling*(H-top-bottom);
- const yCrest=v=>H-bottom-v/crestCeiling*(H-top-bottom);
+ const rainValues=rows.flatMap(r=>fields.map(f=>r[f]).filter(Number.isFinite));
+ const rainfallMax=Math.max(1,...rainValues),rainCeiling=Math.ceil(rainfallMax/2)*2;
+ const crestRows=crestOn?(analysisGeometry===null?data.times.filter(r=>Number.isFinite(r.max_cfs_mi2)&&Date.parse(r.utc)>=t0&&Date.parse(r.utc)<=t1):(crestAnalysis||[]).filter(r=>Number.isFinite(r.max)&&Date.parse(r.utc)>=t0&&Date.parse(r.utc)<=t1).map(r=>({utc:r.utc,max_cfs_mi2:r.max}))):[];
+ const crestMax=Math.max(1,...crestRows.map(r=>r.max_cfs_mi2)),crestCeiling=Math.ceil(crestMax/1000)*1000;
+ const yRain=v=>H-bottom-v/rainCeiling*(H-top-bottom),yCrest=v=>H-bottom-v/crestCeiling*(H-top-bottom);
  const text=(xv,yv,t,anchor='middle',color='#b9c9dc')=>'<text x="'+xv+'" y="'+yv+'" text-anchor="'+anchor+'" font-size="13" fill="'+color+'">'+t+'</text>';
  let lines='';
- for(let i=0;i<=5;i++){
-  const v=rainCeiling*i/5, yy=yRain(v);
-  lines+='<line x1="'+left+'" y1="'+yy+'" x2="'+(W-right)+'" y2="'+yy+'" stroke="#40516a" stroke-opacity=".55"/>'+text(left-8,yy+4,v.toFixed(1),'end');
-  if(crestOn)lines+=text(W-right+8,yy+4,Math.round(crestCeiling*i/5).toLocaleString(),'start','#a0e28b');
- }
- // Keep hourly gridlines but label only ticks with room for readable text.
- const chartWidth=$('rainChart').clientWidth||900;
- const hourlyPixels=chartWidth*3600000/span;
- const tickStep=Math.max(1,Math.ceil(70/Math.max(1,hourlyPixels)));
- const hourClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hour12:true});
- const zoneClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',timeZoneName:'short'});
- let previousZone=null;
- for(let hour=0,t=Math.ceil(t0/3600000)*3600000;t<=t1;t+=3600000,hour++){
-  const xx=x(t),zone=zoneClock.formatToParts(new Date(t)).find(p=>p.type==='timeZoneName')?.value||'CT';
-  lines+='<line x1="'+xx+'" y1="'+top+'" x2="'+xx+'" y2="'+(H-bottom)+'" stroke="#42536c" stroke-opacity=".4"/>';
-  const changed=previousZone!==null&&zone!==previousZone;
-  if(hour%tickStep===0||changed){
-   const label=hourClock.format(new Date(t)).replace(/\s/g,'')+(changed?' '+zone:'');
-   lines+=text(xx,H-bottom+23,label);
-  }
-  previousZone=zone;
- }
+ for(let i=0;i<=5;i++){const v=rainCeiling*i/5,yy=yRain(v);lines+='<line x1="'+left+'" y1="'+yy+'" x2="'+(W-right)+'" y2="'+yy+'" stroke="#40516a" stroke-opacity=".55"/>'+text(left-8,yy+4,v.toFixed(1),'end');if(crestOn)lines+=text(W-right+8,yy+4,Math.round(crestCeiling*i/5).toLocaleString(),'start','#a0e28b')}
+ const chartWidth=$('rainChart').clientWidth||900,hourlyPixels=chartWidth*3600000/span,tickStep=Math.max(1,Math.ceil(70/Math.max(1,hourlyPixels)));
+ const hourClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hour12:true}),zoneClock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',timeZoneName:'short'});let previousZone=null;
+ for(let hour=0,t=Math.ceil(t0/3600000)*3600000;t<=t1;t+=3600000,hour++){const xx=x(t),zone=zoneClock.formatToParts(new Date(t)).find(p=>p.type==='timeZoneName')?.value||'CT';lines+='<line x1="'+xx+'" y1="'+top+'" x2="'+xx+'" y2="'+(H-bottom)+'" stroke="#42536c" stroke-opacity=".4"/>';const changed=previousZone!==null&&zone!==previousZone;if(hour%tickStep===0||changed)lines+=text(xx,H-bottom+23,hourClock.format(new Date(t)).replace(/\s/g,'')+(changed?' '+zone:''));previousZone=zone}
  lines+=text((left+W-right)/2,H-12,'Central time (America/Chicago; DST-aware)');
- const path=(items,fn)=>{let d='',started=false;for(const [t,v] of items){if(!Number.isFinite(v)){started=false;continue}d+=(started?'L':'M')+x(t).toFixed(2)+' '+fn(v).toFixed(2)+' ';started=true}return d};
- const series=[['max_cumulative','#56caff'],['max_1h','#f3b843'],['max_3h','#ed71bd']];
- for(const [field,color] of series){
-  lines+='<path d="'+path(rows.map((r,i)=>[ts[i],r[field]]),yRain)+'" fill="none" stroke="'+color+'" stroke-width="3" stroke-linejoin="round"/>';
- }
+ const path=(items,fn)=>{let d='',started=false;for(const [t,v]of items){if(!Number.isFinite(v)){started=false;continue}d+=(started?'L':'M')+x(t).toFixed(2)+' '+fn(v).toFixed(2)+' ';started=true}return d};
+ const series=fields.map((field,i)=>[field,['#56caff','#f3b843','#ed71bd'][i]]);
+ for(const [field,color]of series)lines+='<path d="'+path(rows.map((r,i)=>[ts[i],r[field]]),yRain)+'" fill="none" stroke="'+color+'" stroke-width="3" stroke-linejoin="round"/>';
  if(crestRows.length)lines+='<path d="'+path(crestRows.map(r=>[Date.parse(r.utc),r.max_cfs_mi2]),yCrest)+'" fill="none" stroke="#a0e28b" stroke-width="2.5" stroke-dasharray="7 4"/>';
- const selected=nearestIndex(rows,selectedUtc);
- const hover=chartHoverIndex===null?selected:chartHoverIndex;
+ const selected=nearestIndex(rows,selectedUtc),hover=chartHoverIndex===null?selected:chartHoverIndex;
  const cursor=(i,col,dash)=>'<line x1="'+x(ts[i])+'" x2="'+x(ts[i])+'" y1="'+top+'" y2="'+(H-bottom)+'" stroke="'+col+'" stroke-width="2" '+(dash?'stroke-dasharray="5 4"':'')+'/>';
- lines+=cursor(selected,'#fff',false);
- if(chartHoverIndex!==null&&hover!==selected)lines+=cursor(hover,'#ffcf72',true);
- lines+=text(left,16,'Rainfall (inches)','start','#d5e5f5');
- if(crestOn)lines+=text(W-right,16,'CREST Unit Streamflow (cfs/mi²)','end','#a0e28b');
+ lines+=cursor(selected,'#fff',false);if(chartHoverIndex!==null&&hover!==selected)lines+='<line id="chartHoverCursor" x1="'+x(ts[hover])+'" x2="'+x(ts[hover])+'" y1="'+top+'" y2="'+(H-bottom)+'" stroke="#ffcf72" stroke-width="2" stroke-dasharray="5 4"/>';
+ lines+=text(left,16,statistic==='mean'?'Area average rainfall (inches)':'Rainfall maximum (inches)','start','#d5e5f5');if(crestOn)lines+=text(W-right,16,'CREST Unit Streamflow (cfs/mi²)','end','#a0e28b');
  lines+='<rect id="chartHit" x="'+left+'" y="'+top+'" width="'+(W-left-right)+'" height="'+(H-top-bottom)+'" fill="transparent" style="cursor:crosshair"/>';
- $('rainChartMessage').hidden=true;
- $('rainChart').hidden=false;
- $('rainChart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Rainfall timeline with hourly grid, Central time labels, synchronized cursor and optional CREST on right axis">'+lines+'</svg>';
+ $('rainChartMessage').hidden=true;$('rainChart').hidden=false;$('rainChart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Rainfall timeline with hourly grid, Central time labels, synchronized cursor and optional CREST on right axis">'+lines+'</svg>';
  $('crestLegend').hidden=!crestOn;
- const read=rows[hover];
- const crestAt=crestRows.length?crestRows.reduce((prev,r)=>Math.abs(Date.parse(r.utc)-ts[hover])<Math.abs(Date.parse(prev.utc)-ts[hover])?r:prev):null;
- $('chartReadout').textContent=local(read.utc)+'  |  Event: '+fmt(read.max_cumulative)+' in  |  1-hour: '+fmt(read.max_1h)+' in  |  3-hour: '+fmt(read.max_3h)+' in'+(crestAt?'  |  CREST Unit Streamflow: '+fmt(crestAt.max_cfs_mi2)+' cfs/mi² ('+local(crestAt.utc)+')':'');
+ const legend=$('rainTimelinePanel').querySelector('.timeline-legend');legend.children[0].textContent='● Event cumulative '+(statistic==='mean'?'area average':'maximum');legend.children[1].textContent='● 1-hour '+(statistic==='mean'?'area average':'maximum');legend.children[2].textContent='● 3-hour '+(statistic==='mean'?'area average':'maximum');
+ const updateReadout=index=>{const read=rows[index],crestAt=crestRows.length?crestRows.reduce((prev,r)=>Math.abs(Date.parse(r.utc)-ts[index])<Math.abs(Date.parse(prev.utc)-ts[index])?r:prev):null,crestCoverage=analysisGeometry&&crestSelection?' · spatial coverage approximately '+crestSelection.coverage.toFixed(1)+'%':'';$('chartReadout').textContent=local(read.utc)+'  |  Event: '+fmt(read[fields[0]])+' in  |  1-hour: '+fmt(read[fields[1]])+' in  |  3-hour: '+fmt(read[fields[2]])+' in'+(crestAt?'  |  CREST maximum in selected area: '+fmt(crestAt.max_cfs_mi2)+' cfs/mi² ('+local(crestAt.utc)+crestCoverage+')':crestOn?'  |  No valid CREST cells in this selected area'+crestCoverage:'')};
+ updateReadout(hover);
  const hit=$('chartHit');
- hit.addEventListener('pointermove',e=>{
-  const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width;
-  const tt=t0+(Math.max(left,Math.min(W-right,offset))-left)/(W-left-right)*span;
-  const next=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0);
-  if(next!==chartHoverIndex){chartHoverIndex=next;rainfallChart()}
- });
+ hit.addEventListener('pointermove',e=>{const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width,tt=t0+(Math.max(left,Math.min(W-right,offset))-left)/(W-left-right)*span,next=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0);if(next!==chartHoverIndex){chartHoverIndex=next;let cursor=$('chartHoverCursor');if(next!==selected){if(!cursor){cursor=document.createElementNS('http://www.w3.org/2000/svg','line');cursor.id='chartHoverCursor';cursor.setAttribute('y1',top);cursor.setAttribute('y2',H-bottom);cursor.setAttribute('stroke','#ffcf72');cursor.setAttribute('stroke-width','2');cursor.setAttribute('stroke-dasharray','5 4');cursor.setAttribute('pointer-events','none');svg.append(cursor)}cursor.setAttribute('x1',x(ts[next]));cursor.setAttribute('x2',x(ts[next]));cursor.style.display=''}else if(cursor)cursor.style.display='none';updateReadout(next)}});
  hit.addEventListener('pointerleave',()=>{if(chartHoverIndex!==null){chartHoverIndex=null;rainfallChart()}});
- hit.addEventListener('click',e=>{
-  const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width;
-  const tt=t0+(Math.max(left,Math.min(W-right,offset))-left)/(W-left-right)*span;
-  const clicked=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0);
-  const times=activeTimes();
-  if(times?.length){const ix=nearestIndex(times,rows[clicked].utc);$('time').value=ix;selectedUtc=times[ix].utc;if($('product').value==='rainfall')drawRain();else draw();}
- });
+ hit.addEventListener('click',e=>{const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width,tt=t0+(Math.max(left,Math.min(W-right,offset))-left)/(W-left-right)*span,clicked=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0),times=activeTimes();if(times?.length){const ix=nearestIndex(times,rows[clicked].utc);$('time').value=ix;selectedUtc=times[ix].utc;if($('product').value==='rainfall')drawRain();else draw()}});
 }
 function drawRain(){
  if(!rainData)return;
  const ix=Number($('time').value),mode=$('rainMode').value,frame=rainData.frames[mode][ix];
+ updateAnalysisAreaStats();
  layer.clearLayers();
  if(frame){
  const dl=rainData.dlat/2,dy=rainData.dlon/2;
@@ -229,7 +281,7 @@ function drawRain(){
    cell.bindTooltip(fmt(v)+' inches');cell.addTo(layer);
  }}
  const row=rainData.times[ix];
- $('rainCurrent').textContent=fmt(row[{cumulative:'max_cumulative',one_hour:'max_1h',three_hour:'max_3h'}[mode]])+' in';
+ if(analysisGeometry===null)$('rainCurrent').textContent=fmt(row[{cumulative:'max_cumulative',one_hour:'max_1h',three_hour:'max_3h'}[mode]])+' in';
  $('timeLabel').textContent=local(row.utc)+' · hourly ending time'+(frame?'':' · 3-hour window incomplete');
  $('time').disabled=false;$('prev').disabled=ix===0;$('next').disabled=ix===rainData.times.length-1;
  rainfallChart();
@@ -285,7 +337,7 @@ function draw(){
  $('time').disabled=isEver;
  $('prev').disabled=isEver || ix===0;$('next').disabled=isEver || ix===data.times.length-1;
  updatePins();
- if(rainData)rainfallChart();
+ if(rainData){updateAnalysisAreaStats();rainfallChart()}
 }
 $('mode').addEventListener('change',draw);
 $('time').addEventListener('input',()=>{const times=activeTimes();if(times?.length)selectedUtc=times[Number($('time').value)]?.utc||selectedUtc;draw()});
@@ -297,6 +349,7 @@ return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data u
 .then(d=>{
  if(requestGeneration!==eventGeneration)return;
  data=d;
+ refreshAreaAnalysis();
  $('showCrest').disabled=false;$('showCrest').title='';
  if($('product').value==='crest')syncSliderToProduct();
  rainfallChart();
@@ -315,16 +368,19 @@ return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data u
 });
 }
 
+const rainfallRequests=new Map();
 async function loadEventRainfall(requestGeneration,event){
  const url=eventPath('rainfall.json');
- if(rainLoading)return;
  rainLoading=true;
  try{
-  const response=await fetch(url,{cache:'no-store'});
-  if(!response.ok)throw Error('MRMS rainfall archive is not available for this event.');
-  const result=await response.json();
+  if(!rainfallRequests.has(url)){
+   const pending=fetch(url,{cache:'no-store'}).then(response=>{if(!response.ok)throw Error('MRMS rainfall archive is not available for this event.');return response.json()}).catch(error=>{rainfallRequests.delete(url);throw error});
+   rainfallRequests.set(url,pending);
+  }
+  const result=await rainfallRequests.get(url);
   if(requestGeneration!==eventGeneration)return;
   rainData=result;rainLoading=false;
+  refreshAreaAnalysis();
   $('rainEvent').textContent=fmt(result.summary.max_event_inches)+' in';
   $('rain1').textContent=fmt(result.summary.peak_1h_inches)+' in';$('rain1Time').textContent=local(result.summary.peak_1h_utc);
   $('rain3').textContent=fmt(result.summary.peak_3h_inches)+' in';$('rain3Time').textContent=local(result.summary.peak_3h_utc);
@@ -344,8 +400,23 @@ async function loadEventRainfall(requestGeneration,event){
 async function selectEvent(event){
  const selectionGeneration=++eventGeneration;
  activeEvent=event;
- basinOverlay.setEvent(event);
- boundaryLayer.clearLayers();
+ data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
+ rainSelection=null;crestSelection=null;rainAnalysis=null;crestAnalysis=null;
+ areaDrawing.reset();basinOverlay.setSelectionMode(false);analysisGeometry=null;analysisAreaName='Entire Event';analysisAreaType=null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();$('analysisAreaMode').value='entire';$('analysisAreaSummary').textContent='Entire Event · archived MRMS grid coverage';$('chartAreaName').textContent='Analysis area: Entire Event';$('analysisAreaDetails').textContent='Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.';$('analysisAreaMessage').textContent='';$('resetAnalysisArea').hidden=true;$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
+ samples.length=0;pinLayer.clearLayers();layer.clearLayers();
+ $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';
+ $('eventHeading').textContent=event.name.replace(/, (LA|MS)$/,'')+' · Extreme Rainfall event';
+ $('eventSubtitle').textContent=local(event.start_utc)+' – '+local(event.end_utc)+' | NOAA MRMS QPE / FLASH CREST';
+ $('timelineHeading').textContent='Rainfall evolution · '+event.name;
+ $('product').value=event.products?.rainfall?'rainfall':'crest';
+ for(const opt of $('product').options)opt.disabled=event.products?.[opt.value]===false;
+ $('time').value=0;$('time').max=0;$('time').disabled=true;
+ $('rainEvent').textContent=$('rain1').textContent=$('rain3').textContent=$('rainCurrent').textContent=$('rainMeanEvent').textContent='—';$('rain1Time').textContent=$('rain3Time').textContent='—';$('rainCoverageNote').textContent='—';
+ $('peak').textContent='—';$('peakTime').textContent='—';$('currentPeak').textContent='—';
+ $('showCrest').checked=!!event.products?.crest;$('showCrest').disabled=!event.products?.crest;$('showCrest').title=event.products?.crest?'':'CREST comparison is unavailable for this event';
+ $('rainChart').hidden=true;$('rainChartMessage').hidden=false;$('rainChartMessage').textContent='Loading MRMS rainfall timeline…';
+ basinOverlay.setEvent(event);boundaryLayer.clearLayers();
+ const rainRequest=loadEventRainfall(selectionGeneration,event);
  if(event.boundary_file){
   try {
    const response=await fetch(event.boundary_file,{cache:'no-store'});
@@ -357,21 +428,7 @@ async function selectEvent(event){
   }catch(error){console.warn('Could not load archived event boundary',error)}
  }
  if(selectionGeneration!==eventGeneration)return;
- data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
- samples.length=0;pinLayer.clearLayers();layer.clearLayers();
- $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';
- $('eventHeading').textContent=event.name.replace(/, (LA|MS)$/,'')+' · Extreme Rainfall event';
- $('eventSubtitle').textContent=local(event.start_utc)+' – '+local(event.end_utc)+' | NOAA MRMS QPE / FLASH CREST';
- $('timelineHeading').textContent='Rainfall evolution · '+event.name;
- $('product').value=event.products?.rainfall?'rainfall':'crest';
- for(const opt of $('product').options)opt.disabled=event.products?.[opt.value]===false;
- $('time').value=0;$('time').max=0;$('time').disabled=true;
- $('rainEvent').textContent=$('rain1').textContent=$('rain3').textContent='—';
- $('peak').textContent='—';$('peakTime').textContent='—';
- $('showCrest').disabled=!event.products?.crest;$('showCrest').title=event.products?.crest?'':'CREST comparison is unavailable for this event';if(!event.products?.crest)$('showCrest').checked=false;
- $('rainChart').hidden=true;$('rainChartMessage').hidden=false;$('rainChartMessage').textContent='Loading MRMS rainfall timeline…';
  if(event.bounds)map.fitBounds(event.bounds);
- const rainRequest=loadEventRainfall(selectionGeneration,event);
  if(event.products?.crest)await loadCrest();
  else {$('showCrest').disabled=true;$('showCrest').title='CREST comparison is unavailable for this event';}
  if(selectionGeneration!==eventGeneration)return;

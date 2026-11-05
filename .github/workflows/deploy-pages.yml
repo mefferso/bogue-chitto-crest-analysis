@@ -1,0 +1,53 @@
+name: Deploy site to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-custom
+  cancel-in-progress: false
+jobs:
+  publishing-source:
+    runs-on: ubuntu-latest
+    outputs:
+      build_type: ${{ steps.read.outputs.build_type }}
+    steps:
+      - id: read
+        name: Check Pages publishing source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          type=$(gh api "repos/${GH_REPO}/pages" --jq .build_type)
+          echo "build_type=${type}" >> "${GITHUB_OUTPUT}"
+          echo "GitHub Pages source mode: ${type}"
+          if [[ "${type}" != "workflow" ]]; then
+            echo "Pages still uses branch publishing. Skip custom deployment until source is switched to GitHub Actions."
+          fi
+  build:
+    needs: publishing-source
+    if: needs.publishing-source.outputs.build_type == 'workflow'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out site files
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload static website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
