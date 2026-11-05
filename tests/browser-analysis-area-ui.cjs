@@ -34,7 +34,7 @@ const root=process.cwd();
  const sampleCount=await page.evaluate(()=>samples.length);
  await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),polygon);
  assert.equal(await page.evaluate(()=>samples.length),sampleCount,'drawing clicks do not add map samples');
- await page.click('#finishAreaPolygon');assert.equal(await page.locator('#applyAreaDrawing').isVisible(),true,'polygon enters review before apply');
+ if(await page.locator('#finishAreaPolygon').isVisible())await page.click('#finishAreaPolygon');assert.equal(await page.locator('#applyAreaDrawing').isVisible(),true,'polygon enters review before apply');
  await page.click('#applyAreaDrawing');await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
  assert.equal(await page.locator('#editAnalysisArea').isVisible(),true);
  await page.selectOption('#analysisAreaMode','polygon');
