@@ -40,7 +40,7 @@ const root=process.cwd();
  // Draw a rectangle around exactly one known rainfall grid-cell center.
  const reference=await page.evaluate(()=>{
   let r=0,c=0;outer:for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++)if(rainData.frames.cumulative.at(-1)?.[y]?.[x]!=null){r=y;c=x;break outer}
-  const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.49,dw=rainData.dlon*.49;
+  const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.2,dw=rainData.dlon*.2;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
  await page.selectOption('#analysisAreaMode','rectangle');
