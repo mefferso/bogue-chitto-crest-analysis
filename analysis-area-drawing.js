@@ -10,7 +10,7 @@
   let previousDblClick=false,previousDragging=false,handlersAttached=false;
   const point=(lat,lng)=>L.latLng(lat,lng);
   const clone=latlng=>point(latlng.lat,latlng.lng);
-  const geometryFromPoints=values=>({type:'Polygon',coordinates:[[...values.map(p=>[p.lng,p.lat]),[values[0].lng,values[0].lat]]]});
+  const geometryFromPoints=values=>{const ring=values.map(p=>[p.lng,p.lat]);if(ring.length)ring.push([...ring[0]]);return {type:'Polygon',coordinates:[ring]}};
   function setMessage(text,isError=false){message.textContent=text;if(sidebarMessage){sidebarMessage.textContent=text;sidebarMessage.classList.toggle('is-error',isError)}message.classList.toggle('is-error',isError)}
   function styleFor(error=false){return {pane:paneName,color:error?'#ff6b6b':'#ffd166',weight:3,opacity:1,fillColor:error?'#ff6b6b':'#ffd166',fillOpacity:.1,dashArray:'7 5',interactive:false}}
   function clearPreview(){preview.clearLayers();shapePreview.clearLayers()}
