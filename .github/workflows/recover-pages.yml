@@ -1,4 +1,4 @@
-name: Recover stuck GitHub Pages deployment
+name: Diagnose GitHub Pages deployment lock
 on:
   push:
     branches: [main]
@@ -8,20 +8,29 @@ on:
 permissions:
   contents: read
   pages: write
+  deployments: write
 jobs:
-  cancel-stuck-pages-deployment:
+  inspect-pages:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Cancel orphaned Pages deployment from November 5
+      - name: Inspect Pages site and blocked deployment
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        shell: bash
         run: |
           set -euo pipefail
           stuck="77c4eadeaed067785e593b4f22d985cb790c401e"
-          echo "Canceling stuck GitHub Pages deployment ${stuck}"
-          gh api --method POST "repos/${GH_REPO}/pages/deployments/${stuck}/cancel"
-          echo "Pages cancel API accepted the request."
-          echo "The latest main commit must still deploy successfully after this."
+          echo "::group::Pages configuration"
+          gh api "repos/${GH_REPO}/pages" --jq '{status, build_type, source, html_url}' || true
+          echo "::endgroup::"
+          echo "::group::Blocked Pages deployment state"
+          gh api "repos/${GH_REPO}/pages/deployments/${stuck}" || true
+          echo "::endgroup::"
+          echo "::group::Generic GitHub deployments"
+          gh api "repos/${GH_REPO}/deployments?per_page=100" --jq '.[] | {id, sha, environment, created_at, updated_at}' || true
+          echo "::endgroup::"
+          echo "::group::Most recent Pages build"
+          gh api "repos/${GH_REPO}/pages/builds/latest" --jq '{status,error,commit,created_at,updated_at}' || true
+          echo "::endgroup::"
+          echo "Diagnostics finished; no remote state was changed."
