@@ -7,6 +7,7 @@ on:
     paths:
       - 'scripts/**'
       - 'index.html'
+      - 'analysis-area.js'
       - 'drainage-basins.js'
       - 'tests/**'
       - 'data/basins/**'
@@ -39,6 +40,8 @@ jobs:
           python -m unittest discover -s tests -v
           node tests/basins.test.cjs
           node --check drainage-basins.js
+          node tests/analysis-area.test.cjs
+          node --check analysis-area.js
       - name: Prepare browser validation dependencies
         timeout-minutes: 5
         run: |
