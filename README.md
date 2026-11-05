@@ -82,12 +82,21 @@ The historical-event workflow prepares optional basin assets after registering a
 event; source failures never block the scientific archive. Existing valid assets
 are retained after failed refreshes. Run `python scripts/basins.py --refresh
 --require-available` to refresh and validate all events, or add `--event <id>` for
-one event. **Prepare USGS drainage basins** in Actions also creates a downloadable
-`usgs-drainage-basins` artifact; copy its contents to `data/basins/` and commit them
-to publish geography without regenerating any scientific archives. Its PR check
+one event. **Prepare USGS drainage basins** in Actions refreshes and commits geography on
+the selected branch when run manually; it also creates a downloadable
+`usgs-drainage-basins` artifact. No scientific archives are regenerated. Its PR check
 retrieves official data on preparation-code changes. No fabricated geometry is
 published on failures.
 
 Validation: `python -m unittest discover -s tests -v` and
 `node tests/basins.test.cjs`. Test geometries are synthetic fixtures confined to
 `tests/`; published assets must come from the official source.
+
+Chromium integration checks run in CI against the published official geometry and
+archived products, with external basemap tiles blocked. To repeat locally, install
+Playwright under `work/` (`npm install --prefix work --no-save playwright`), run
+`work/node_modules/.bin/playwright install --with-deps chromium`, download Leaflet
+1.9.4 JS/CSS from jsDelivr into `work/leaflet.js` and `work/leaflet.css`, then run
+`NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs`. This checks both
+events, neighboring-parish coverage, product/time/mode/opacity changes, zoom detail,
+real outline clicks, sampling pins, event switching and static-asset failures.

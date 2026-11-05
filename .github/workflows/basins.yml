@@ -1,9 +1,6 @@
 name: Prepare USGS drainage basins
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/drainage-basins]
-    paths: [.github/workflows/basins.yml]
   pull_request:
     paths:
       - 'scripts/basins.py'

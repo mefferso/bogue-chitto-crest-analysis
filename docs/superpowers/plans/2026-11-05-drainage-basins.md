@@ -21,18 +21,18 @@
 - Raster clicks, pins, timelines and unified opacity must remain operational.
 
 ## Task 1: Static data preparation
-- [ ] Write tests for land selection (legacy, neighbors, marine), full geometry retention, pagination, malformed data, reuse and failed retrieval.
-- [ ] Run failing tests, implement scripts/basins.py, run Python test suite.
-- [ ] Use county reference polygons for legacy/marine reconstruction; use exact archived union for nonmarine events. Keep exact pre-marine land geometry for future events.
-- [ ] Publish data/basins/index.json with event status and relative HUC asset paths; hash land geometry for cross-event reuse. Record layer metadata, retrieval time, CRS and simplification tolerance.
+- [x] Write tests for land selection (legacy, neighbors, marine), full geometry retention, pagination, malformed data, reuse and failed retrieval.
+- [x] Run failing tests, implement scripts/basins.py, run Python test suite.
+- [x] Use county reference polygons for legacy/marine reconstruction; use exact archived union for nonmarine events. Keep exact pre-marine land geometry for future events.
+- [x] Publish data/basins/index.json with event status and relative HUC asset paths; hash land geometry for cross-event reuse. Record layer metadata, retrieval time, CRS and simplification tolerance.
 
 ## Task 2: Leaflet overlay
-- [ ] Write Node controller tests for on/off, zoom replacement, stale event requests, retry and failure.
-- [ ] Implement drainage-basins.js and minimal index.html hooks; use separate pane with transparent interiors and line-only hit detection.
-- [ ] Test integration with current product/time/mode/opacity controls and real browser if available.
+- [x] Write Node controller tests for on/off, zoom replacement, stale event requests, retry and failure.
+- [x] Implement drainage-basins.js and minimal index.html hooks; use separate pane with transparent interiors and line-only hit detection.
+- [x] Test integration with current product/time/mode/opacity controls and real browser if available.
 
 ## Task 3: Automation and delivery
-- [ ] Add standalone basin refresh workflow plus optional event-generation step; no rainfall archive regeneration.
-- [ ] Generate assets through GitHub Actions if managed environment blocks USGS access; never fabricate published geometry.
-- [ ] Update documentation and validation workflow; run Python/Node, syntax, YAML, static geometry and browser checks.
+- [x] Add standalone basin refresh workflow plus optional event-generation step; no rainfall archive regeneration.
+- [x] Generate assets through GitHub Actions if managed environment blocks USGS access; never fabricate published geometry.
+- [x] Update documentation and validation workflow; run Python/Node, syntax, YAML, static geometry and browser checks.
 - [ ] Review branch, refresh main, create PR, wait for checks, merge and verify Pages when accessible.
