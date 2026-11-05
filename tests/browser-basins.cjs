@@ -26,7 +26,7 @@ const root=process.cwd();
   return route.abort();
  });
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
- await page.waitForFunction(()=>rainData && document.querySelector('#status').textContent.includes('rainfall'));
+ await page.waitForFunction(()=>rainData&&data&&document.querySelector('#status').textContent.includes('rainfall'));
  async function dragRectangle(points){
   const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
   await page.mouse.move(pixels[0].x,pixels[0].y);await page.mouse.down();await page.mouse.move(pixels[1].x,pixels[1].y,{steps:4});await page.mouse.up();
