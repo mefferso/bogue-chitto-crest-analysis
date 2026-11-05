@@ -10,6 +10,12 @@ const root=process.cwd();
   const url=new URL(route.request().url());
   if(url.hostname==='basins.test'){
    const name=decodeURIComponent(url.pathname.slice(1))||'index.html';
+   if(name==='data/events.json'){
+    const index=JSON.parse(fs.readFileSync(path.join(root,name),'utf8'));
+    index.events.push({id:'test-rain-only',name:'Rainfall only test',label:'Rainfall only test',start_utc:'2026-10-31T19:00:00Z',end_utc:'2026-11-01T08:00:00Z',data_dir:'data/events/2026-10-31_jefferson-parish-la',products:{rainfall:true,crest:false}});
+    index.events.push({id:'test-no-rain',name:'No rainfall test',label:'No rainfall test',data_dir:'data/no-such-event',products:{rainfall:true,crest:false}});
+    return route.fulfill({contentType:'application/json',body:JSON.stringify(index)});
+   }
    if(name.startsWith('data/basins/')){basinRequests++;if(failAssets)return route.fulfill({status:503,body:'Offline test'});}
    const file=path.join(root,name);
    if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'missing'});
@@ -22,6 +28,24 @@ const root=process.cwd();
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData && document.querySelector('#status').textContent.includes('rainfall'));
  assert.equal(basinRequests,0);assert.equal(await page.isChecked('#drainageBasins'),false);
+ assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);
+ async function chartCursorUtc(){return await page.evaluate(()=>{const line=[...$('rainChart').querySelectorAll('line')].find(el=>el.getAttribute('stroke')==='#fff');if(!line)return null;const t0=Date.parse(rainData.times[0].utc),t1=Date.parse(rainData.times.at(-1).utc),x=Number(line.getAttribute('x1'));return new Date(t0+(x-66)/(1100-66-78)*(t1-t0)).toISOString()})}
+ async function nearestRainUtc(anchor){return await page.evaluate(anchor=>rainData.times.reduce((best,row)=>Math.abs(Date.parse(row.utc)-Date.parse(anchor))<Math.abs(Date.parse(best.utc)-Date.parse(anchor))?row:best).utc,anchor)}
+ await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST')&&data&&rainData);
+ assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);
+ let expectedAnchor=await page.evaluate(()=>selectedUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(expectedAnchor)))<1000);
+ await page.locator('#time').evaluate(el=>{el.value='37';el.dispatchEvent(new Event('input',{bubbles:true}))});
+ expectedAnchor=await page.evaluate(()=>selectedUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(expectedAnchor)))<1000);
+ await page.selectOption('#mode','ever');expectedAnchor=await page.evaluate(()=>selectedUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(expectedAnchor)))<1000);
+ await page.check('#showCrest');assert.ok(await page.locator('#rainChart path[stroke="#a0e28b"]').count()>0);
+ const chartBox=await page.locator('#rainChart svg').boundingBox(),beforeClick=await page.evaluate(()=>selectedUtc);await page.mouse.click(chartBox.x+chartBox.width*.78,chartBox.y+chartBox.height*.45);
+ await page.waitForFunction(before=>selectedUtc!==before,beforeClick);
+ const clickedAnchor=await page.evaluate(()=>({utc:selectedUtc,idx:Number($('time').value),mapUtc:data.times[Number($('time').value)].utc}));
+ assert.equal(clickedAnchor.utc,clickedAnchor.mapUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(clickedAnchor.utc)))<1000);
+ await page.selectOption('#product','rainfall');assert.equal(await page.isChecked('#showCrest'),true);
+ assert.equal(await page.locator('#rainChart path[stroke="#a0e28b"]').count()>0,true);
+ await page.selectOption('#product','crest');assert.equal(await page.isChecked('#showCrest'),true);
+ await page.selectOption('#product','rainfall');
  // Low-bin cells must leave the basemap exposed in every product/display mode.
  for(const product of ['rainfall','crest']){
   await page.selectOption('#product',product);
@@ -120,7 +144,13 @@ const root=process.cwd();
  await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.screenshot({path:'work/jefferson-basins.png',fullPage:true});
  await page.selectOption('#eventSelect','2026-10-31_pearl-river-ms');await page.waitForFunction(()=>rainData&&activeEvent.id.includes('pearl')&&$('status').textContent.includes('rainfall'));
- await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));await page.uncheck('#drainageBasins');
+ await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
+ assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);assert.equal(await page.isDisabled('#showCrest'),true);assert.match(await page.getAttribute('#showCrest','title'),/unavailable/i);
+ let missingRainRequests=0;await page.route('**/data/no-such-event/rainfall.json',route=>{missingRainRequests++;return route.fulfill({status:404,body:'missing'})});
+ await page.selectOption('#eventSelect','test-no-rain');await page.waitForFunction(()=>$('rainChartMessage').textContent.includes('unavailable'));
+ assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);assert.equal(missingRainRequests,1);
+ await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
+ await page.uncheck('#drainageBasins');
  assert.equal(await page.locator('.drainage-basin-line').count(),0);
  // New page has no loaded asset cache: a static fetch failure must leave products usable.
  failAssets=true;await page.reload();await page.waitForFunction(()=>rainData&&$('status').textContent.includes('rainfall'));
