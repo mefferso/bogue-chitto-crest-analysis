@@ -29,6 +29,8 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 #rainChart{position:relative;width:100%;margin-top:12px}#rainChart svg{display:block;width:100%;height:auto;touch-action:pan-y}
 .timeline-legend{gap:16px;margin:6px 0 12px}#chartReadout{min-height:23px;font-size:13px;color:#dce7f6;font-variant-numeric:tabular-nums}
 @media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}#rainTimelinePanel{padding:14px 10px}.timeline-head h2{font-size:17px}}
+.drainage-basin-line{pointer-events:stroke!important}
+#basinStatus,.basin-note{display:block;margin-top:6px}
 </style></head>
 <body><header><h1 id="eventHeading">Pearl River County · Extreme Rainfall event</h1>
 <p id="eventSubtitle">October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow</p></header>
@@ -37,6 +39,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="status">Loading archived data…</div>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
+<div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD hydrologic units: HUC10 regionally; HUC12 at zoom 11+. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
 <div class="panel"><label for="productOpacity">Product Opacity: <output id="productOpacityValue" for="productOpacity">85%</output></label><input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Product opacity"></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
@@ -56,7 +59,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST Unit Streamflow (right axis)</span></div>
 <div id="chartReadout" aria-live="polite">Hover or select a time to examine the rainfall evolution.</div>
 </section></section></main>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="drainage-basins.js"></script><script>
 const map=L.map('map',{preferCanvas:true}).setView([30.69,-89.62],10);
 let activeEvent={id:'2026-10-31_pearl-river-ms',name:'Pearl River County, MS',label:'Oct 31, 2026 — Pearl River County, MS',start_utc:'2026-10-31T18:00:00Z',end_utc:'2026-11-01T12:00:00Z',data_dir:'data',products:{crest:true,rainfall:true}};
 const eventPath=file=>activeEvent.data_dir+'/'+file;
@@ -71,6 +74,7 @@ const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',da
 let data,layer=L.layerGroup().addTo(map);
 let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
 let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
+const basinOverlay=createDrainageBasins({map,L,toggle:$('drainageBasins'),status:$('basinStatus')});
 const pinLayer=L.layerGroup().addTo(map),samples=[];
 function activeTimes(){return $('product').value==='rainfall'?rainData?.times:data?.times}
 function nearestIndex(times,utc){
@@ -319,6 +323,7 @@ return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data u
 async function selectEvent(event){
  const selectionGeneration=++eventGeneration;
  activeEvent=event;
+ basinOverlay.setEvent(event);
  boundaryLayer.clearLayers();
  if(event.boundary_file){
   try {
