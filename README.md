@@ -35,3 +35,59 @@ Rainfall retrieval requires complete hourly NOAA AWS MRMS Pass 2 source grids. C
 
 ### Coastal marine-inclusive event boundaries
 The Generate Historical Event workflow offers **Include adjacent NWS coastal marine zones** (default on). This expands the *analysis area*, not the parish/county's legal boundary. It uses the archived county FIPS polygon plus adjoining polygons from NOAA's current NWS Coastal Marine Zone Forecasts FeatureServer. The exact union geometry and zone IDs/names are recorded in each event's `boundary.geojson`; both QPE and CREST processing use that same file. Disable the option for land/county-only statistics. This boundary is not historically versioned for old events, so note the boundary vintage when comparing older storms. Existing saved events remain unchanged until deliberately regenerated with overwrite enabled.
+
+## Drainage Basins reference overlay
+
+The **Drainage Basins** checkbox is off by default. When enabled, thin teal
+outlines show USGS Watershed Boundary Dataset (WBD) HUC10 watersheds; zoom 11+
+shows HUC12 subwatersheds instead. Click an outline for its name and HUC code.
+The overlay is independent of the product, archive timestamp, display mode,
+product-opacity slider, pins and statistics. It does not change map zoom.
+
+WBD hydrologic units are generalized geographic divisions, **not NWS/RFC forecast
+basins, exact upstream contributing areas to individual river points, or evidence
+of flooding**. Rainfall, CREST values, thresholds and analysis masks are unchanged.
+
+### Geographic coverage and reproducibility
+
+`python scripts/basins.py` prepares only the land footprints of registered events,
+without reprocessing rainfall or CREST archives. It queries official
+[USGS WBD](https://www.usgs.gov/national-hydrography/watershed-boundary-dataset)
+[FeatureServer](https://hydro-wfs.nationalmap.gov/arcgis/rest/services/wbd/FeatureServer)
+layers 5 (HUC10) and 6 (HUC12). It batches all returned object IDs, verifies complete
+responses, requests EPSG:4326, validates/repairs polygon geometry, selects by exact
+land intersection and retains each selected unit's complete extent. No outlines
+are clipped at county lines. Topology-preserving simplification uses 0.0001 degrees
+(about 11 m north/south). Asset metadata records source, retrieval UTC, service edit
+information when supplied, selection bounds, CRS and simplification tolerance.
+These are retrieval snapshots of the current WBD, not historical boundary vintages.
+
+Nonmarine events use their archived footprint, including neighboring counties.
+Legacy Pearl River uses county FIPS 28109. Legacy marine-inclusive events reconstruct
+only their recorded land counties from the same FIPS reference used by the project;
+marine zones never contribute to selection. Newly generated event boundaries also
+save `land-boundary.geojson`, the exact land union before adding marine zones.
+The county reference cache records its source and retrieval time.
+
+Static GeoJSON lives under `data/basins/<land-hash>/`, shared by identical event
+footprints. `data/basins/index.json` maps event IDs to the two resolutions. The
+browser requests assets only when enabled and retains loaded assets for the session;
+no live GIS endpoint or nationwide watershed download is required. A failed asset
+fetch displays “Drainage basins unavailable” while existing map controls work.
+Previously loaded assets can be toggled again during a connection outage. An asset
+never loaded cannot be supplied offline; the base map/Leaflet still have their
+existing external dependencies.
+
+The historical-event workflow prepares optional basin assets after registering an
+event; source failures never block the scientific archive. Existing valid assets
+are retained after failed refreshes. Run `python scripts/basins.py --refresh
+--require-available` to refresh and validate all events, or add `--event <id>` for
+one event. **Prepare USGS drainage basins** in Actions also creates a downloadable
+`usgs-drainage-basins` artifact; copy its contents to `data/basins/` and commit them
+to publish geography without regenerating any scientific archives. Its PR check
+retrieves official data on preparation-code changes. No fabricated geometry is
+published on failures.
+
+Validation: `python -m unittest discover -s tests -v` and
+`node tests/basins.test.cjs`. Test geometries are synthetic fixtures confined to
+`tests/`; published assets must come from the official source.

@@ -86,6 +86,9 @@ def register():
            "data_dir":str(out),
            "products":{"rainfall":True,"crest":crest_ok},
            "status":{"crest":"available" if crest_ok else "archive unavailable"}}
+    event["fips"]=boundary["properties"]["fips"]
+    if (out/"land-boundary.geojson").exists():
+        event["land_boundary_file"]=str(out/"land-boundary.geojson")
     (out/"event.json").write_text(json.dumps(event,indent=2)+"\n")
     index=read_index()
     index["events"]=[e for e in index["events"] if e["id"]!=event["id"]]+[event]

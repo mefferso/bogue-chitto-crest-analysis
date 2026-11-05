@@ -51,6 +51,7 @@ def generate(fips, destination, marine=False, neighbors=False):
             surrounding.append({"fips":fid,"geometry":geom})
         if not surrounding:raise ValueError("No neighboring counties found; check county geometry")
         result=unary_union([county]+[entry["geometry"] for entry in surrounding])
+    land_result=result
     chosen=[]
     if marine:
         minx,miny,maxx,maxy=county.bounds
@@ -84,6 +85,9 @@ def generate(fips, destination, marine=False, neighbors=False):
             "county_source":NWS_COUNTY_SOURCE,"county_reference_fips":COUNTY_SOURCE,"marine_source":MARINE_SOURCE if marine else None},
             "geometry":mapping(result)}
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
+    # Preserve the exact pre-marine footprint for geographic reference overlays only.
+    land_path=destination.with_name("land-boundary.geojson")
+    land_path.write_text(json.dumps({"type":"Feature","properties":{"fips":fips,"source":NWS_COUNTY_SOURCE},"geometry":mapping(land_result)},separators=(",",":")))
     destination.write_text(json.dumps(record,separators=(",",":")))
     return record
 
