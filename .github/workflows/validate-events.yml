@@ -46,7 +46,7 @@ jobs:
         timeout-minutes: 5
         run: |
           mkdir -p work
-          npm install --prefix work --no-save playwright
+          npm install --prefix work --no-save playwright@1.62.1
           if command -v google-chrome >/dev/null; then
             echo "CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
           else
