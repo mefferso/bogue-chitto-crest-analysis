@@ -1,12 +1,15 @@
 name: Prepare USGS drainage basins
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/drainage-basins]
+    paths: [.github/workflows/basins.yml]
   pull_request:
     paths:
       - 'scripts/basins.py'
       - '.github/workflows/basins.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -29,3 +32,15 @@ jobs:
           name: usgs-drainage-basins
           path: data/basins/
           if-no-files-found: error
+      - name: Publish prepared static geography on the selected branch
+        if: github.event_name != 'pull_request'
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/basins/
+          if ! git diff --cached --quiet; then
+            git commit -m "Refresh official USGS watershed reference assets"
+            git push origin "HEAD:$TARGET_BRANCH"
+          fi

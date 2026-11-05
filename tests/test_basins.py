@@ -86,6 +86,47 @@ class BasinsTests(unittest.TestCase):
         with patch.object(self.b,'get_json',side_effect=request),self.assertRaises(ValueError):
             self.b.query_features(5,box(0,0,1,1))
 
+    def test_new_legacy_county_is_fetched_when_cache_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'data/basins').mkdir(parents=True)
+            (root/'data/basins/counties.geojson').write_text(json.dumps({'features':[dict(feature(box(0,0,1,1)),id='28109')]}))
+            event={'id':'legacy-marine','fips':'22051','marine_zones':[{'id':'zone'}]}
+            (root/'data/events.json').write_text(json.dumps({'events':[event]}))
+            def query(layer,land):
+                level=10 if layer==5 else 12
+                return [feature(box(-1,-1,2,2),**{f'huc{level}':'1'*level})]
+            def request(url,params=None):
+                if url==self.b.COUNTIES:return {'features':[dict(feature(box(0,0,1,1)),id='22051')]}
+                return {'name':'WBD'}
+            with patch.object(self.b,'get_json',side_effect=request),patch.object(self.b,'query_features',side_effect=query):
+                result=self.b.prepare(root)
+            self.assertEqual(result['events']['legacy-marine']['status'],'available')
+
+    def test_two_record_limit_retries_singletons(self):
+        def request(url,params):
+            if params.get('returnIdsOnly')=='true':return {'objectIds':[1,2]}
+            if ',' in params['objectIds']:return {'features':[],'exceededTransferLimit':True}
+            return {'features':[feature(box(0,0,1,1),OBJECTID=int(params['objectIds']))]}
+        with patch.object(self.b,'get_json',side_effect=request):
+            self.assertEqual(len(self.b.query_features(5,box(0,0,1,1),batch_size=2)),2)
+
+    def test_changed_land_does_not_advertise_stale_coverage_after_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'data/basins').mkdir(parents=True)
+            (root/'data/events.json').write_text(json.dumps({'events':[{'id':'event','boundary_file':'boundary.geojson'}]}))
+            (root/'boundary.geojson').write_text(json.dumps(feature(box(0,0,1,1))))
+            def query(layer,land):
+                level=10 if layer==5 else 12
+                return [feature(box(-1,-1,2,2),**{f'huc{level}':'1'*level})]
+            with patch.object(self.b,'query_features',side_effect=query),patch.object(self.b,'get_json',return_value={'name':'WBD'}):
+                result=self.b.prepare(root)
+            assets=list(result['events']['event']['levels'].values())
+            (root/'boundary.geojson').write_text(json.dumps(feature(box(0,0,10,10))))
+            with patch.object(self.b,'query_features',side_effect=RuntimeError('offline')):
+                result=self.b.prepare(root)
+            self.assertEqual(result['events']['event']['status'],'unavailable')
+            self.assertTrue(all((root/path).exists() for path in assets))
+
     def test_failure_preserves_old_manifest_and_assets(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); (root/'data/basins').mkdir(parents=True)

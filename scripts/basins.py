@@ -116,8 +116,6 @@ def query_features(layer, land, batch_size=100):
             if len(batch)==1:
                 raise ValueError('WBD response incomplete, refusing partial coverage')
             # Smaller batches honor a service limit lower than our conservative default.
-            if batch_size<=2:
-                raise ValueError('WBD response incomplete, refusing partial coverage')
             return query_features(layer,land,max(1,batch_size//2))
         features.extend(rows)
     return features
@@ -156,6 +154,7 @@ def prepare(root, event_id=None, refresh=False):
         if event_id and event['id'] != event_id:
             continue
         old = index['events'].get(event['id'],{})
+        levels = None
         try:
             try:
                 land = land_footprint(event,root,{})
@@ -168,7 +167,12 @@ def prepare(root, event_id=None, refresh=False):
                     except Exception as error:
                         county_error = str(error)
                         raise
-                land = land_footprint(event,root,counties)
+                try:
+                    land = land_footprint(event,root,counties)
+                except ValueError:
+                    # A subset cache may predate a newly imported legacy event.
+                    counties.update(load_counties(root,refresh=True))
+                    land = land_footprint(event,root,counties)
             fingerprint = hashlib.sha256((land.wkb_hex+f':{VERSION}:{TOLERANCE}').encode()).hexdigest()[:20]
             prefix = f'data/basins/{fingerprint}'
             levels = {str(level):f'{prefix}/huc{level}.geojson' for level in LAYERS}
@@ -189,11 +193,17 @@ def prepare(root, event_id=None, refresh=False):
             index['events'][event['id']] = {'status':'available','levels':levels,'land_bounds':list(land.bounds)}
         except Exception as error:
             print(f'Basins unavailable for {event["id"]}: {error}',file=sys.stderr)
-            if old.get('status')=='available' and all((root/p).exists() for p in old.get('levels',{}).values()):
+            if levels is not None and old.get('levels')==levels and old.get('status')=='available' and all((root/p).exists() for p in old.get('levels',{}).values()):
                 index['events'][event['id']] = {**old,'last_refresh_error':str(error)}
             else:
                 index['events'][event['id']] = {'status':'unavailable','reason':'Official WBD data could not be prepared','detail':str(error)}
     if counties:
+        county_cache = out/'counties.geojson'
+        previous_counties = json.loads(county_cache.read_text()) if county_cache.exists() else {}
+        previous_metadata = previous_counties.get('metadata',{})
+        previous_geometries = {str(f['id']):polygon(f['geometry']) for f in previous_counties.get('features',[])}
+        reused_counties = not refresh and all(code in previous_geometries and geom.equals(previous_geometries[code]) for code,geom in counties.items())
+        retrieved = previous_metadata.get('retrieved_utc') if reused_counties else datetime.now(timezone.utc).isoformat()
         # Persist just the needed county reference polygons for offline future reuse.
         needed = set()
         for event in events:
@@ -203,7 +213,7 @@ def prepare(root, event_id=None, refresh=False):
             fips = props.get('fips') or event.get('fips') or ('28109' if event['id']=='2026-10-31_pearl-river-ms' else None)
             if fips: needed.add(str(fips))
             needed.update(map(str,props.get('surrounding_counties',event.get('surrounding_counties',[]))))
-        write_json(out/'counties.geojson',{'type':'FeatureCollection','metadata':{'source':COUNTIES,'retrieved_utc':datetime.now(timezone.utc).isoformat()},
+        write_json(out/'counties.geojson',{'type':'FeatureCollection','metadata':{'source':COUNTIES,'retrieved_utc':retrieved},
             'features':[{'type':'Feature','id':code,'properties':{'fips':code},'geometry':mapping(counties[code])} for code in sorted(needed) if code in counties]})
     index['source'] = SOURCE
     write_json(index_path,index)
