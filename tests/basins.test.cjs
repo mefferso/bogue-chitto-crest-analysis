@@ -45,5 +45,17 @@ test('popup uses text content; boundaries do not capture polygon interiors',asyn
  const s=setup(async url=>response(url.includes('index.json')?manifest:geo));
  s.controller.setEvent({id:'a'});s.toggle.checked=true;s.toggle.change();await tick();
  const layer=[...s.layers][0];assert.equal(layer.options.style.fill,false);assert.equal(layer.options.bubblingMouseEvents,false);
- let popup;layer.options.onEachFeature(geo.features[0],{bindPopup(p){popup=p}});assert.match(popup.textContent,/Pearl.*1234567890/);
+ let popup;layer.options.onEachFeature(geo.features[0],{bindPopup(p){popup=p},bindTooltip(){}});assert.match(popup.textContent,/Pearl.*1234567890/);
+});
+
+test('permanent basin names use safe text and a HUC fallback',async()=>{
+ const s=setup(async url=>response(url.includes('index.json')?manifest:geo));
+ s.controller.setEvent({id:'a'});s.toggle.checked=true;await s.toggle.change();await tick();
+ const layer=[...s.layers][0];
+ for(const [name,expected] of [['  Pearl   River  ','Pearl River'],['','1234567890'],['Unnamed hydrologic unit','1234567890'],['1234567890','1234567890'],[null,'1234567890'],['<River>','<River>']]){
+  let label,options;
+  layer.options.onEachFeature({...geo.features[0],properties:{name,huc:'1234567890'}},{bindPopup(){},bindTooltip(value,opts){label=value;options=opts}});
+  assert.equal(label?.textContent,expected);
+  assert.equal(options.permanent,true);assert.equal(options.interactive,false);assert.equal(options.direction,'center');
+ }
 });

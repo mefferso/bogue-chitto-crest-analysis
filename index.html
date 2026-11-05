@@ -31,6 +31,8 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 @media(max-width:760px){main{display:flex;flex-direction:column}#map{min-height:480px;height:58vh}aside{border-right:0}#rainTimelinePanel{padding:14px 10px}.timeline-head h2{font-size:17px}}
 .drainage-basin-line{pointer-events:stroke!important}
 #basinStatus,.basin-note{display:block;margin-top:6px}
+.basin-name{background:transparent;border:0;box-shadow:none;color:#ecfffb;font-size:11px;font-weight:600;line-height:1.2;text-align:center;white-space:normal;width:max-content;max-width:140px;padding:2px 3px;pointer-events:none!important;text-shadow:-1px -1px 0 #101827,1px -1px 0 #101827,-1px 1px 0 #101827,1px 1px 0 #101827,0 0 4px #101827}
+.basin-name:before{display:none}
 </style></head>
 <body><header><h1 id="eventHeading">Pearl River County · Extreme Rainfall event</h1>
 <p id="eventSubtitle">October 31–November 1, 2026 | NOAA MRMS QPE-CREST maximum unit streamflow</p></header>
@@ -39,8 +41,8 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="status">Loading archived data…</div>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
-<div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD hydrologic units: HUC10 regionally; HUC12 at zoom 11+. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
-<div class="panel"><label for="productOpacity">Product Opacity: <output id="productOpacityValue" for="productOpacity">85%</output></label><input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Product opacity"></div>
+<div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD hydrologic units: HUC10 regionally; HUC12 at zoom 11+. Names follow the active detail level; overlapping labels are hidden. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
+<div class="panel"><label for="productOpacity">Product Opacity: <output id="productOpacityValue" for="productOpacity">85%</output></label><input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Product opacity"><small class="basin-note">Cells below 0.1 inch rainfall or 200 cfs/mi² CREST are not drawn.</small></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
@@ -218,7 +220,7 @@ function drawRain(){
  if(frame){
  const dl=rainData.dlat/2,dy=rainData.dlon/2;
  for(let r=0;r<frame.length;r++)for(let c=0;c<frame[r].length;c++){
-   const v=frame[r][c];if(v===null)continue;
+   const v=frame[r][c];if(v===null||v<rainBins[1])continue;
    const lat=rainData.latitudes[r],lon=rainData.longitudes[c];
    const cell=L.rectangle([[lat-dl,lon-dy],[lat+dl,lon+dy]],{stroke:false,fillColor:rainColor(v),fillOpacity:Number($('productOpacity').value)/100,interactive:true});
    cell.bindTooltip(fmt(v)+' inches');cell.addTo(layer);
