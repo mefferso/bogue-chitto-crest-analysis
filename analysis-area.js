@@ -46,6 +46,35 @@
   if(g.type==='MultiPolygon')return g.coordinates.reduce((s,p)=>s+polygonArea(p),0);
   return null;
  }
+ function validatePolygon(value) {
+  const geometry=geometryOf(value),ring=geometry?.type==='Polygon'?geometry.coordinates?.[0]:null;
+  const invalid=message=>({valid:false,message});
+  if(!Array.isArray(ring))return invalid('Draw a polygon to continue.');
+  if(ring.some(point=>!Array.isArray(point)||!Number.isFinite(point[0])||!Number.isFinite(point[1])))return invalid('Polygon coordinates must be finite map locations.');
+  const points=ring.slice();
+  const same=(a,b)=>Math.abs(a[0]-b[0])<=1e-10&&Math.abs(a[1]-b[1])<=1e-10;
+  if(points.length>1&&same(points[0],points.at(-1)))points.pop();
+  if(points.length<3||new Set(points.map(point=>point.map(v=>v.toFixed(10)).join(','))).size<3)return invalid('A polygon needs at least three distinct vertices.');
+  for(let i=0;i<points.length;i++)if(same(points[i],points[(i+1)%points.length]))return invalid('Consecutive polygon vertices must be distinct.');
+  let twiceArea=0,minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<points.length;i++){
+   const a=points[i],b=points[(i+1)%points.length];twiceArea+=a[0]*b[1]-b[0]*a[1];
+   minX=Math.min(minX,a[0]);maxX=Math.max(maxX,a[0]);minY=Math.min(minY,a[1]);maxY=Math.max(maxY,a[1]);
+  }
+  const orientation=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+  const onSegment=(a,b,p)=>Math.min(a[0],b[0])-1e-10<=p[0]&&p[0]<=Math.max(a[0],b[0])+1e-10&&Math.min(a[1],b[1])-1e-10<=p[1]&&p[1]<=Math.max(a[1],b[1])+1e-10;
+  const intersects=(a,b,c,d)=>{
+   const o1=orientation(a,b,c),o2=orientation(a,b,d),o3=orientation(c,d,a),o4=orientation(c,d,b),eps=1e-12;
+   if((o1>eps&&o2< -eps||o1< -eps&&o2>eps)&&(o3>eps&&o4< -eps||o3< -eps&&o4>eps))return true;
+   return Math.abs(o1)<=eps&&onSegment(a,b,c)||Math.abs(o2)<=eps&&onSegment(a,b,d)||Math.abs(o3)<=eps&&onSegment(c,d,a)||Math.abs(o4)<=eps&&onSegment(c,d,b);
+  };
+  for(let i=0;i<points.length;i++)for(let j=i+1;j<points.length;j++){
+   if(j===i+1||i===0&&j===points.length-1)continue;
+   if(intersects(points[i],points[(i+1)%points.length],points[j],points[(j+1)%points.length]))return invalid('The polygon edges cross or touch. Move a vertex to remove the self-intersection.');
+  }
+  if(Math.abs(twiceArea)<=Math.max(1,(maxX-minX)*(maxY-minY))*1e-12)return invalid('The polygon has zero area; move its vertices to enclose an area.');
+  return {valid:true,message:''};
+ }
  function cellArea(grid,lat) {
   const height=rad(Math.abs(grid.dlat)), width=rad(Math.abs(grid.dlon));
   return EARTH_RADIUS_M*EARTH_RADIUS_M*width*Math.abs(Math.sin(rad(lat)+height/2)-Math.sin(rad(lat)-height/2));
@@ -99,8 +128,9 @@
    if(!data?.frames)return null;
    return data.times.map((row,i)=>({utc:row.utc,...summarize(data.frames[i],selection)}));
   }
-  return {mask,rainfall,crest,summarize,geometryArea,contains};
+  return {mask,rainfall,crest,summarize,geometryArea,contains,validatePolygon};
  }
  root.createRainfallAreaAnalysis=createAnalysis;
  if(typeof module!=='undefined'&&module.exports)module.exports=createAnalysis;
 })(typeof window!=='undefined'?window:globalThis);
+

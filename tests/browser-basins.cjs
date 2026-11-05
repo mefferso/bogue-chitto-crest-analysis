@@ -27,6 +27,14 @@ const root=process.cwd();
  });
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData && document.querySelector('#status').textContent.includes('rainfall'));
+ async function dragRectangle(points){
+  const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
+  await page.mouse.move(pixels[0].x,pixels[0].y);await page.mouse.down();await page.mouse.move(pixels[1].x,pixels[1].y,{steps:4});await page.mouse.up();
+ }
+ async function dragRectangleInMap(x1,y1,x2,y2){
+  const rect=await page.locator('#map').boundingBox();await page.mouse.move(rect.x+x1,rect.y+y1);await page.mouse.down();await page.mouse.move(rect.x+x2,rect.y+y2,{steps:4});await page.mouse.up();
+ }
+ async function applyArea(){await page.click('#applyAreaDrawing')}
  assert.equal(await page.textContent('#analysisAreaSummary'),'Entire Event · archived MRMS grid coverage');
  assert.equal(await page.locator('#rainEvent').textContent(),await page.evaluate(()=>fmt(rainData.summary.max_event_inches)+' in'));
  // Draw a rectangle around exactly one known rainfall grid-cell center.
@@ -36,7 +44,7 @@ const root=process.cwd();
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
  await page.selectOption('#analysisAreaMode','rectangle');
- await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),reference.points);
+ await dragRectangle(reference.points);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle');
  assert.deepEqual(await page.evaluate(()=>rainSelection.cells.map(({r,c})=>[r,c])),[[reference.r,reference.c]]);
  assert.equal(await page.textContent('#rainEvent'),Math.max(...reference.values).toLocaleString(undefined,{maximumFractionDigits:1})+' in');
@@ -48,9 +56,9 @@ const root=process.cwd();
  await page.selectOption('#product','rainfall');await page.selectOption('#analysisAreaMode','polygon');
  const polygon=await page.evaluate(ref=>{const lat=rainData.latitudes[ref.r],lon=rainData.longitudes[ref.c],dy=rainData.dlat*.49,dx=rainData.dlon*.49;return [[lat-dy,lon-dx],[lat-dy,lon+dx],[lat+dy,lon+dx],[lat+dy,lon-dx]]},reference);
  await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),polygon);
- await page.click('#finishAreaPolygon');await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
+ await page.click('#finishAreaPolygon');await page.waitForFunction(()=>$('applyAreaDrawing').hidden===false);await applyArea();await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
  assert.deepEqual(await page.evaluate(()=>rainSelection.cells.map(({r,c})=>[r,c])),[[reference.r,reference.c]]);
- await page.selectOption('#analysisAreaMode','rectangle');await page.evaluate(()=>{map.fire('click',{latlng:L.latLng(1,1)});map.fire('click',{latlng:L.latLng(1.1,1.1)})});
+ await page.selectOption('#analysisAreaMode','rectangle');await dragRectangleInMap(70,70,125,125);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle'&&rainAnalysis.gridCells===0);
  assert.match(await page.textContent('#analysisAreaMessage'),/No archived rainfall grid cells/);
  await page.click('#resetAnalysisArea');await page.selectOption('#rainChartStatistic','maximum');assert.equal(await page.evaluate(()=>analysisGeometry),null);
@@ -156,7 +164,7 @@ const root=process.cwd();
  assert.equal(await page.locator('.drainage-basin-line').count(),0);assert.equal(await page.textContent('#basinStatus'),'Off');
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});
  failAssets=true;await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));assert.ok(await page.locator('.drainage-basin-line').count()>0);failAssets=false;
- await page.selectOption('#analysisAreaMode','rectangle');await page.evaluate(()=>{map.fire('click',{latlng:L.latLng(30.5,-90)});map.fire('click',{latlng:L.latLng(30.6,-89.9)})});await page.waitForFunction(()=>analysisGeometry!==null);
+ await page.selectOption('#analysisAreaMode','rectangle');await dragRectangleInMap(80,80,140,140);await applyArea();await page.waitForFunction(()=>analysisGeometry!==null);
  let unblockBoundary;await page.route('**/data/events/2026-10-31_jefferson-parish-la/boundary.geojson',async route=>{await page.evaluate(()=>window.__boundaryStarted=true);await new Promise(resolve=>unblockBoundary=resolve);return route.fulfill({path:path.join(root,'data/events/2026-10-31_jefferson-parish-la/boundary.geojson'),contentType:'application/json'})});
  const switchingEvent=page.selectOption('#eventSelect','2026-10-31_jefferson-parish-la');await page.waitForFunction(()=>window.__boundaryStarted&&activeEvent.id==='2026-10-31_jefferson-parish-la');
  assert.equal(await page.evaluate(()=>analysisGeometry),null,'event selection resets the custom area before the boundary response');assert.notEqual(await page.evaluate(()=>rainData?.summary.start_utc), '2026-10-31T18:00:00+00:00','old rainfall archive is not shown while the boundary response is pending');
@@ -197,3 +205,4 @@ const root=process.cwd();
  assert.deepEqual(errors,[]);console.log('Offline static failure isolated; product remains functional; no page errors');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+
