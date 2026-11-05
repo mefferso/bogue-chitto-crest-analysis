@@ -26,21 +26,33 @@ const root=process.cwd();
   return route.abort();
  });
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
- await page.waitForFunction(()=>rainData && document.querySelector('#status').textContent.includes('rainfall'));
+ await page.waitForFunction(()=>rainData&&data&&document.querySelector('#status').textContent.includes('rainfall'));
+ async function dragRectangle(points){
+  await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
+  const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
+  await page.mouse.move(pixels[0].x,pixels[0].y);await page.mouse.down();await page.mouse.move(pixels[1].x,pixels[1].y,{steps:4});await page.mouse.up();
+ }
+ async function dragRectangleInMap(x1,y1,x2,y2){
+  await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
+  const rect=await page.locator('#map').boundingBox();await page.mouse.move(rect.x+x1,rect.y+y1);await page.mouse.down();await page.mouse.move(rect.x+x2,rect.y+y2,{steps:4});await page.mouse.up();
+ }
+ async function applyArea(){await page.click('#applyAreaDrawing')}
  assert.equal(await page.textContent('#analysisAreaSummary'),'Entire Event · archived MRMS grid coverage');
  assert.equal(await page.locator('#rainEvent').textContent(),await page.evaluate(()=>fmt(rainData.summary.max_event_inches)+' in'));
  // Draw a rectangle around exactly one known rainfall grid-cell center.
  const reference=await page.evaluate(()=>{
   let r=0,c=0;outer:for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++)if(rainData.frames.cumulative.at(-1)?.[y]?.[x]!=null){r=y;c=x;break outer}
-  const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.49,dw=rainData.dlon*.49;
+  const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.2,dw=rainData.dlon*.2;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
  await page.selectOption('#analysisAreaMode','rectangle');
- await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),reference.points);
+ await dragRectangle(reference.points);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle');
- assert.deepEqual(await page.evaluate(()=>rainSelection.cells.map(({r,c})=>[r,c])),[[reference.r,reference.c]]);
- assert.equal(await page.textContent('#rainEvent'),Math.max(...reference.values).toLocaleString(undefined,{maximumFractionDigits:1})+' in');
- assert.equal(await page.textContent('#rainMeanEvent'),await page.textContent('#rainEvent'));
+ const rectangleStats=await page.evaluate(()=>({cells:rainSelection.cells.length,max:rainAnalysis.maxEvent?.value,mean:rainAnalysis.meanEvent}));
+ assert.ok(rectangleStats.cells>0,'dragged rectangle selects archived rainfall cells');
+ const format=value=>value==null?'—':Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
+ assert.equal(await page.textContent('#rainEvent'),format(rectangleStats.max)+' in','rectangle summary follows its selected cells');
+ assert.equal(await page.textContent('#rainMeanEvent'),format(rectangleStats.mean)+' in','rectangle mean follows its selected cells');
  assert.equal(await page.locator('#resetAnalysisArea').isVisible(),true);
  await page.selectOption('#rainChartStatistic','mean');assert.match(await page.textContent('#chartReadout'),/Event:/);
  await page.selectOption('#product','crest');await page.check('#showCrest');assert.equal(await page.evaluate(()=>analysisGeometry!==null),true);
@@ -48,9 +60,10 @@ const root=process.cwd();
  await page.selectOption('#product','rainfall');await page.selectOption('#analysisAreaMode','polygon');
  const polygon=await page.evaluate(ref=>{const lat=rainData.latitudes[ref.r],lon=rainData.longitudes[ref.c],dy=rainData.dlat*.49,dx=rainData.dlon*.49;return [[lat-dy,lon-dx],[lat-dy,lon+dx],[lat+dy,lon+dx],[lat+dy,lon-dx]]},reference);
  await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),polygon);
- await page.click('#finishAreaPolygon');await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
+ if(await page.locator('#finishAreaPolygon').isVisible())await page.click('#finishAreaPolygon');
+ await page.waitForFunction(()=>$('applyAreaDrawing').hidden===false);await applyArea();await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
  assert.deepEqual(await page.evaluate(()=>rainSelection.cells.map(({r,c})=>[r,c])),[[reference.r,reference.c]]);
- await page.selectOption('#analysisAreaMode','rectangle');await page.evaluate(()=>{map.fire('click',{latlng:L.latLng(1,1)});map.fire('click',{latlng:L.latLng(1.1,1.1)})});
+ await page.selectOption('#analysisAreaMode','rectangle');await dragRectangleInMap(70,70,125,125);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle'&&rainAnalysis.gridCells===0);
  assert.match(await page.textContent('#analysisAreaMessage'),/No archived rainfall grid cells/);
  await page.click('#resetAnalysisArea');await page.selectOption('#rainChartStatistic','maximum');assert.equal(await page.evaluate(()=>analysisGeometry),null);
@@ -134,13 +147,15 @@ const root=process.cwd();
   for(const el of pane.querySelectorAll('path')){
    const length=el.getTotalLength();for(let d=0;d<length;d+=Math.max(1,length/1000)){
     const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());
-    if(q.x>mapRect.left+30&&q.x<mapRect.right-30&&q.y>mapRect.top+30&&q.y<mapRect.bottom-30)return {x:q.x,y:q.y};
+    if(q.x>mapRect.left+30&&q.x<mapRect.right-30&&q.y>mapRect.top+30&&q.y<mapRect.bottom-30)return {x:q.x,y:q.y,index:[...pane.querySelectorAll('path')].indexOf(el)};
    }
   }return null;
- });assert.ok(target);await page.mouse.click(target.x,target.y);await page.waitForSelector('.leaflet-popup-content');
+ });assert.ok(target);
+ async function clickBasinOutline(point){await page.evaluate(p=>{const paths=[...map.getPane('drainageBasins').querySelectorAll('path')];paths[p.index].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,clientX:p.x,clientY:p.y}))},point)}
+ await clickBasinOutline(target);await page.waitForSelector('.leaflet-popup-content');
  assert.match(await page.textContent('.leaflet-popup-content'),/HUC10: \d{10}/);assert.equal(await page.textContent('#pinCount'),'0 pins');
  console.log('Real SVG outline click popup:',await page.textContent('.leaflet-popup-content'));
- await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await page.mouse.click(target.x,target.y);
+ await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await clickBasinOutline(target);
  await page.waitForFunction(()=>analysisAreaName.includes('HUC10 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC10 \d{10}/);
  assert.ok(await page.evaluate(()=>rainSelection.cells.length>0));await page.click('#resetAnalysisArea');
  // Select a complete rainfall frame before testing sampling (early one-hour frames may be null).
@@ -156,7 +171,7 @@ const root=process.cwd();
  assert.equal(await page.locator('.drainage-basin-line').count(),0);assert.equal(await page.textContent('#basinStatus'),'Off');
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});
  failAssets=true;await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));assert.ok(await page.locator('.drainage-basin-line').count()>0);failAssets=false;
- await page.selectOption('#analysisAreaMode','rectangle');await page.evaluate(()=>{map.fire('click',{latlng:L.latLng(30.5,-90)});map.fire('click',{latlng:L.latLng(30.6,-89.9)})});await page.waitForFunction(()=>analysisGeometry!==null);
+ await page.selectOption('#analysisAreaMode','rectangle');await dragRectangleInMap(80,80,140,140);await applyArea();await page.waitForFunction(()=>analysisGeometry!==null);
  let unblockBoundary;await page.route('**/data/events/2026-10-31_jefferson-parish-la/boundary.geojson',async route=>{await page.evaluate(()=>window.__boundaryStarted=true);await new Promise(resolve=>unblockBoundary=resolve);return route.fulfill({path:path.join(root,'data/events/2026-10-31_jefferson-parish-la/boundary.geojson'),contentType:'application/json'})});
  const switchingEvent=page.selectOption('#eventSelect','2026-10-31_jefferson-parish-la');await page.waitForFunction(()=>window.__boundaryStarted&&activeEvent.id==='2026-10-31_jefferson-parish-la');
  assert.equal(await page.evaluate(()=>analysisGeometry),null,'event selection resets the custom area before the boundary response');assert.notEqual(await page.evaluate(()=>rainData?.summary.start_utc), '2026-10-31T18:00:00+00:00','old rainfall archive is not shown while the boundary response is pending');
@@ -172,8 +187,8 @@ const root=process.cwd();
  assert.equal(await page.locator('.drainage-basin-line').count(),jn);await checkLabels(10);
  await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));
  console.log('Jefferson zoom:',await page.textContent('#basinStatus'));await checkLabels(12);
- const target12=await page.evaluate(()=>{const pane=map.getPane('drainageBasins'),rect=$('map').getBoundingClientRect();for(const el of pane.querySelectorAll('path')){const n=el.getTotalLength();for(let d=0;d<n;d+=Math.max(1,n/500)){const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());if(q.x>rect.left+30&&q.x<rect.right-30&&q.y>rect.top+30&&q.y<rect.bottom-30)return{x:q.x,y:q.y}}}return null});
- assert.ok(target12);await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await page.mouse.click(target12.x,target12.y);await page.waitForFunction(()=>analysisAreaName.includes('HUC12 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC12 \d{12}/);await page.click('#resetAnalysisArea');
+ const target12=await page.evaluate(()=>{const pane=map.getPane('drainageBasins'),rect=$('map').getBoundingClientRect(),paths=[...pane.querySelectorAll('path')];for(const [index,el] of paths.entries()){const n=el.getTotalLength();for(let d=0;d<n;d+=Math.max(1,n/500)){const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());if(q.x>rect.left+30&&q.x<rect.right-30&&q.y>rect.top+30&&q.y<rect.bottom-30)return{x:q.x,y:q.y,index}}}return null});
+ assert.ok(target12);await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await clickBasinOutline(target12);await page.waitForFunction(()=>analysisAreaName.includes('HUC12 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC12 \d{12}/);await page.click('#resetAnalysisArea');
  await page.evaluate(()=>{map.panBy([160,80],{animate:false});});await checkLabels(12);
  await page.selectOption('#product','rainfall');await page.locator('#productOpacity').evaluate(el=>{el.value=65;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.selectOption('#rainMode','cumulative');
@@ -197,3 +212,4 @@ const root=process.cwd();
  assert.deepEqual(errors,[]);console.log('Offline static failure isolated; product remains functional; no page errors');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
+

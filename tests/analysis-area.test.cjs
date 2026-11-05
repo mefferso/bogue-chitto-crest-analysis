@@ -37,4 +37,10 @@ const wholeEvent=analysis.rainfall(archived,analysis.mask(archived,null));
 for(let i=1;i<archived.times.length;i++)for(const [computed,source] of [['max_cumulative','max_cumulative'],['max_1h','max_1h'],['max_3h','max_3h']])assert.equal(wholeEvent.series[i][computed],archived.times[i][source],`Entire Event ${computed} archive value at index ${i}`);
 assert.equal(wholeEvent.series[0].max_1h,null,'original zero-accumulation baseline remains an invalid 1-hour observation');
 assert.equal(wholeEvent.series[0].max_3h,null,'original zero-accumulation baseline remains an invalid 3-hour observation');
+const validTriangle={type:'Polygon',coordinates:[[[0,0],[2,0],[1,2],[0,0]]]};
+assert.equal(analysis.validatePolygon(validTriangle).valid,true,'a valid triangle is accepted');
+assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[1,0],[0,0]]]}).message,/three distinct/i,'duplicate vertices do not count toward the minimum');
+assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[1,0],[2,0],[0,0]]]}).message,/area|degenerate/i,'collinear rings are rejected');
+assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[2,2],[0,2],[2,0],[0,0]]]}).message,/intersect/i,'self-intersecting rings are rejected');
 console.log('analysis-area tests passed');
+
