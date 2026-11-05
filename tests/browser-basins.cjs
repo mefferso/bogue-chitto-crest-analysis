@@ -28,10 +28,12 @@ const root=process.cwd();
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData&&data&&document.querySelector('#status').textContent.includes('rainfall'));
  async function dragRectangle(points){
+  await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
   const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
   await page.mouse.move(pixels[0].x,pixels[0].y);await page.mouse.down();await page.mouse.move(pixels[1].x,pixels[1].y,{steps:4});await page.mouse.up();
  }
  async function dragRectangleInMap(x1,y1,x2,y2){
+  await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
   const rect=await page.locator('#map').boundingBox();await page.mouse.move(rect.x+x1,rect.y+y1);await page.mouse.down();await page.mouse.move(rect.x+x2,rect.y+y2,{steps:4});await page.mouse.up();
  }
  async function applyArea(){await page.click('#applyAreaDrawing')}
