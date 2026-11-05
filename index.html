@@ -56,9 +56,9 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 </div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a value pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
 </aside><section id="vizColumn"><div id="map" aria-label="Interactive map of CREST modeled unit streamflow"></div>
-<section id="rainTimelinePanel" hidden aria-label="Rainfall and CREST time series">
+<section id="rainTimelinePanel" aria-label="Rainfall and CREST time series">
 <div class="timeline-head"><div><h2 id="timelineHeading">Rainfall evolution · Pearl River County</h2><small>County maximum at each time; maxima may occur at different grid cells. CREST Unit Streamflow is modeled, not measured discharge.</small></div><label class="compare-check"><input type="checkbox" id="showCrest"> Compare CREST Unit Streamflow (right axis)</label></div>
-<div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST Unit Streamflow (right axis)</span></div>
+<div id="rainChartMessage" role="status" aria-live="polite">Loading MRMS rainfall timeline…</div><div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● CREST Unit Streamflow (right axis)</span></div>
 <div id="chartReadout" aria-live="polite">Hover or select a time to examine the rainfall evolution.</div>
 </section></section></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="drainage-basins.js"></script><script>
@@ -78,7 +78,7 @@ let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
 let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
 const basinOverlay=createDrainageBasins({map,L,toggle:$('drainageBasins'),status:$('basinStatus')});
 const pinLayer=L.layerGroup().addTo(map),samples=[];
-function activeTimes(){return $('product').value==='rainfall'?rainData?.times:data?.times}
+function activeTimes(product=$('product').value){return product==='rainfall'?rainData?.times:data?.times}
 function nearestIndex(times,utc){
  if(!times?.length)return 0;
  const target=Date.parse(utc);
@@ -95,6 +95,7 @@ function syncSliderToProduct(){
  if(!times?.length){$('time').max=0;$('time').value=0;$('time').disabled=true;$('prev').disabled=true;$('next').disabled=true;return false}
  const ix=nearestIndex(times,selectedUtc);
  $('time').max=times.length-1;$('time').value=ix;
+ if(!selectedUtc)selectedUtc=times[ix].utc;
  $('time').disabled=$('product').value==='rainfall'?false:$('mode').value==='ever';
  return true;
 }
@@ -184,7 +185,7 @@ function rainfallChart(){
   lines+='<path d="'+path(rows.map((r,i)=>[ts[i],r[field]]),yRain)+'" fill="none" stroke="'+color+'" stroke-width="3" stroke-linejoin="round"/>';
  }
  if(crestRows.length)lines+='<path d="'+path(crestRows.map(r=>[Date.parse(r.utc),r.max_cfs_mi2]),yCrest)+'" fill="none" stroke="#a0e28b" stroke-width="2.5" stroke-dasharray="7 4"/>';
- const selected=Math.max(0,Math.min(rows.length-1,Number($('time').value)));
+ const selected=nearestIndex(rows,selectedUtc);
  const hover=chartHoverIndex===null?selected:chartHoverIndex;
  const cursor=(i,col,dash)=>'<line x1="'+x(ts[i])+'" x2="'+x(ts[i])+'" y1="'+top+'" y2="'+(H-bottom)+'" stroke="'+col+'" stroke-width="2" '+(dash?'stroke-dasharray="5 4"':'')+'/>';
  lines+=cursor(selected,'#fff',false);
@@ -192,6 +193,8 @@ function rainfallChart(){
  lines+=text(left,16,'Rainfall (inches)','start','#d5e5f5');
  if(crestOn)lines+=text(W-right,16,'CREST Unit Streamflow (cfs/mi²)','end','#a0e28b');
  lines+='<rect id="chartHit" x="'+left+'" y="'+top+'" width="'+(W-left-right)+'" height="'+(H-top-bottom)+'" fill="transparent" style="cursor:crosshair"/>';
+ $('rainChartMessage').hidden=true;
+ $('rainChart').hidden=false;
  $('rainChart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Rainfall timeline with hourly grid, Central time labels, synchronized cursor and optional CREST on right axis">'+lines+'</svg>';
  $('crestLegend').hidden=!crestOn;
  const read=rows[hover];
@@ -208,14 +211,14 @@ function rainfallChart(){
  hit.addEventListener('click',e=>{
   const svg=hit.ownerSVGElement,b=svg.getBoundingClientRect(),offset=(e.clientX-b.left)*W/b.width;
   const tt=t0+(Math.max(left,Math.min(W-right,offset))-left)/(W-left-right)*span;
-  $('time').value=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0);
-  drawRain();
+  const clicked=ts.reduce((best,t,i)=>Math.abs(t-tt)<Math.abs(ts[best]-tt)?i:best,0);
+  const times=activeTimes();
+  if(times?.length){const ix=nearestIndex(times,rows[clicked].utc);$('time').value=ix;selectedUtc=times[ix].utc;if($('product').value==='rainfall')drawRain();else draw();}
  });
 }
 function drawRain(){
  if(!rainData)return;
  const ix=Number($('time').value),mode=$('rainMode').value,frame=rainData.frames[mode][ix];
- selectedUtc=rainData.times[ix]?.utc||selectedUtc;
  layer.clearLayers();
  if(frame){
  const dl=rainData.dlat/2,dy=rainData.dlon/2;
@@ -236,28 +239,11 @@ function chooseProduct(){
  const rain=$('product').value==='rainfall';
  layer.clearLayers();pinLayer.clearLayers();
  $('crestControls').hidden=rain;$('rainControls').hidden=!rain;
- $('rainTimelinePanel').hidden=!rain;
+ $('rainTimelinePanel').hidden=false;
  $('crestEventPeak').hidden=rain;$('crestStatistics').hidden=rain;
- if(rain&&!rainData&&!rainLoading){
-  rainLoading=true;$('status').textContent='Loading historical rainfall…';syncSliderToProduct();
-  const requestGeneration=eventGeneration,url=eventPath('rainfall.json');
-  fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('MRMS rainfall archive not processed. Run the separate rainfall workflow.');return r.json()}).then(d=>{
-   if(requestGeneration!==eventGeneration)return;
-   rainData=d;rainLoading=false;
-   $('rainEvent').textContent=fmt(d.summary.max_event_inches)+' in';
-   $('rain1').textContent=fmt(d.summary.peak_1h_inches)+' in';$('rain1Time').textContent=local(d.summary.peak_1h_utc);
-   $('rain3').textContent=fmt(d.summary.peak_3h_inches)+' in';$('rain3Time').textContent=local(d.summary.peak_3h_utc);
-   if($('product').value==='rainfall'){
-    syncSliderToProduct();rainfallChart();$('status').textContent='MRMS Pass 2 rainfall · '+d.times.length+' complete hourly grids';drawRain();
-   }
-  }).catch(e=>{
-   if(requestGeneration!==eventGeneration)return;
-   rainLoading=false;if($('product').value==='rainfall')$('status').textContent='RAINFALL NOT LOADED: '+e.message;
-  });
-  return;
- }
  if(rain&&!rainData){
-  syncSliderToProduct();$('status').textContent='Loading historical rainfall…';return;
+  if(rainLoading)$('status').textContent='Loading historical rainfall…';
+  return;
  }
  if(syncSliderToProduct()){
   if(rain){$('status').textContent='MRMS Pass 2 rainfall · '+rainData.times.length+' hourly grids';drawRain()}
@@ -267,6 +253,11 @@ function chooseProduct(){
 $('product').addEventListener('change',chooseProduct);
 $('rainMode').addEventListener('change',drawRain);
 $('showCrest').addEventListener('change',rainfallChart);
+function setArchiveIndex(index){
+ const times=activeTimes();if(!times?.length)return;
+ const ix=Math.max(0,Math.min(times.length-1,index));$('time').value=ix;selectedUtc=times[ix].utc;
+ if($('product').value==='rainfall')drawRain();else draw();
+}
 function updateProductOpacity(){
  const opacity=Number($('productOpacity').value)/100;
  $('productOpacityValue').textContent=Math.round(opacity*100)+'%';
@@ -277,7 +268,6 @@ function draw(){
  if($('product').value==='rainfall'){drawRain();return}
  if(!data)return;
  const ix=Number($('time').value), isEver=$('mode').value==='ever', raster=isEver?data.ever_max:data.frames[ix];
- selectedUtc=data.times[ix]?.utc||selectedUtc;
  layer.clearLayers();
  const dl=data.dlat/2,do_=data.dlon/2, bounds=[];
  for(let r=0;r<raster.length;r++){
@@ -295,18 +285,21 @@ function draw(){
  $('time').disabled=isEver;
  $('prev').disabled=isEver || ix===0;$('next').disabled=isEver || ix===data.times.length-1;
  updatePins();
+ if(rainData)rainfallChart();
 }
 $('mode').addEventListener('change',draw);
-$('time').addEventListener('input',draw);
-$('prev').onclick=()=>{$('time').value=Math.max(0,Number($('time').value)-1);draw()};
-$('next').onclick=()=>{$('time').value=Math.min(($('product').value==='rainfall'?rainData?.times.length:data?.times.length||1)-1,Number($('time').value)+1);draw()};
+$('time').addEventListener('input',()=>{const times=activeTimes();if(times?.length)selectedUtc=times[Number($('time').value)]?.utc||selectedUtc;draw()});
+$('prev').onclick=()=>setArchiveIndex(Number($('time').value)-1);
+$('next').onclick=()=>setArchiveIndex(Number($('time').value)+1);
 function loadCrest(){
 const requestGeneration=eventGeneration,url=eventPath('dashboard.json');
 return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data unavailable for this event.');return r.json()})
 .then(d=>{
  if(requestGeneration!==eventGeneration)return;
  data=d;
+ $('showCrest').disabled=false;$('showCrest').title='';
  if($('product').value==='crest')syncSliderToProduct();
+ rainfallChart();
  $('status').textContent='Archive processed · '+d.times.length+' grids (check source metadata for gaps)';
  $('status').style.color='#8beaaf';
  $('peak').textContent=fmt(d.summary.peak_cfs_mi2)+' cfs/mi²';
@@ -318,7 +311,33 @@ return fetch(url,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('CREST data u
  $('status').textContent='ARCHIVE NOT LOADED: '+e.message;
  $('peak').textContent='Not verified';
  $('peakTime').textContent='CREST not available for selected event.';
+ $('showCrest').disabled=true;$('showCrest').checked=false;$('showCrest').title='CREST comparison unavailable: '+e.message;rainfallChart();
 });
+}
+
+async function loadEventRainfall(requestGeneration,event){
+ const url=eventPath('rainfall.json');
+ if(rainLoading)return;
+ rainLoading=true;
+ try{
+  const response=await fetch(url,{cache:'no-store'});
+  if(!response.ok)throw Error('MRMS rainfall archive is not available for this event.');
+  const result=await response.json();
+  if(requestGeneration!==eventGeneration)return;
+  rainData=result;rainLoading=false;
+  $('rainEvent').textContent=fmt(result.summary.max_event_inches)+' in';
+  $('rain1').textContent=fmt(result.summary.peak_1h_inches)+' in';$('rain1Time').textContent=local(result.summary.peak_1h_utc);
+  $('rain3').textContent=fmt(result.summary.peak_3h_inches)+' in';$('rain3Time').textContent=local(result.summary.peak_3h_utc);
+  $('rainChartMessage').hidden=true;$('rainChart').hidden=false;
+  if(!selectedUtc)syncSliderToProduct();
+  rainfallChart();
+  if($('product').value==='rainfall'){syncSliderToProduct();drawRain()}
+ }catch(error){
+  if(requestGeneration!==eventGeneration)return;
+  rainLoading=false;$('rainChart').hidden=true;$('rainChartMessage').hidden=false;
+  $('rainChartMessage').textContent='Rainfall timeline unavailable: '+error.message;
+  if($('product').value==='rainfall')$('status').textContent='RAINFALL NOT LOADED: '+error.message;
+ }
 }
 
 // Preserve the original legacy event files; load new events only from their isolated directories.
@@ -349,11 +368,15 @@ async function selectEvent(event){
  $('time').value=0;$('time').max=0;$('time').disabled=true;
  $('rainEvent').textContent=$('rain1').textContent=$('rain3').textContent='—';
  $('peak').textContent='—';$('peakTime').textContent='—';
- $('showCrest').checked=false;
+ $('showCrest').disabled=!event.products?.crest;$('showCrest').title=event.products?.crest?'':'CREST comparison is unavailable for this event';if(!event.products?.crest)$('showCrest').checked=false;
+ $('rainChart').hidden=true;$('rainChartMessage').hidden=false;$('rainChartMessage').textContent='Loading MRMS rainfall timeline…';
  if(event.bounds)map.fitBounds(event.bounds);
+ const rainRequest=loadEventRainfall(selectionGeneration,event);
  if(event.products?.crest)await loadCrest();
+ else {$('showCrest').disabled=true;$('showCrest').title='CREST comparison is unavailable for this event';}
  if(selectionGeneration!==eventGeneration)return;
  chooseProduct();
+ await rainRequest;
  if(!event.products?.crest && !event.products?.rainfall)$('status').textContent='No event products available';
 }
 async function initEventLibrary(){
