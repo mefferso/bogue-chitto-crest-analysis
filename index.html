@@ -145,7 +145,7 @@ function updateAnalysisAreaStats(){
 function selectBasinForAnalysis(feature,name,level){
  if($('analysisAreaMode').value!=='basin')return;const huc=feature?.properties?.huc;if(!huc)return;
  areaDrawing.reset();setAnalysisArea(feature.geometry,name+' · HUC'+level+' '+huc,'basin');$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
- showAreaMessage('Basin outline is complete; statistics use only available archived grid cells whose centers fall inside it.');
+ if(!$('analysisAreaMessage').textContent)showAreaMessage('Basin outline is complete; statistics use only available archived grid cells whose centers fall inside it.');
 }
 function resetAnalysisArea(){areaDrawing.reset();$('analysisAreaMode').value='entire';setAnalysisArea(null,'Entire Event');}
 function beginSelectedAreaMode(){
@@ -156,7 +156,7 @@ function beginSelectedAreaMode(){
 }
 function drawReplacementArea(){const mode=$('analysisAreaMode').value;if(['rectangle','polygon'].includes(mode))areaDrawing.start(mode)}
 function editAnalysisArea(){if(analysisGeometry&&analysisAreaType)areaDrawing.edit(analysisGeometry,analysisAreaType)}
-const areaDrawing=createAnalysisAreaDrawing({map,L,toolbar:$('areaDrawingToolbar'),message:$('areaDrawingHint'),sidebarMessage:$('analysisAreaMessage'),finishButton:$('finishAreaPolygon'),undoButton:$('undoAreaPoint'),cancelButton:$('cancelAreaDrawing'),applyButton:$('applyAreaDrawing'),cancelChangesButton:$('cancelAreaChanges'),removeVertexButton:$('removeAreaVertex'),validatePolygon:areaAnalysis.validatePolygon,onApply:(geometry,type)=>setAnalysisArea(geometry,type==='rectangle'?'Drawn rectangle':'Drawn polygon',type),onDraftStart:({editingExisting})=>{if(editingExisting)showAreaMessage('Editing a draft. The applied shape and statistics remain active until Apply Analysis.')}});
+const areaDrawing=createAnalysisAreaDrawing({map,L,toolbar:$('areaDrawingToolbar'),message:$('areaDrawingHint'),sidebarMessage:$('analysisAreaMessage'),finishButton:$('finishAreaPolygon'),undoButton:$('undoAreaPoint'),cancelButton:$('cancelAreaDrawing'),applyButton:$('applyAreaDrawing'),cancelChangesButton:$('cancelAreaChanges'),removeVertexButton:$('removeAreaVertex'),validatePolygon:areaAnalysis.validatePolygon,onApply:(geometry,type)=>setAnalysisArea(geometry,type==='rectangle'?'Drawn rectangle':'Drawn polygon',type),onCancel:()=>{showAreaMessage('');updateAnalysisAreaStats()},onDraftStart:({editingExisting})=>{if(editingExisting)showAreaMessage('Editing a draft. The applied shape and statistics remain active until Apply Analysis.')}});
 $('analysisAreaMode').addEventListener('change',beginSelectedAreaMode);$('resetAnalysisArea').addEventListener('click',resetAnalysisArea);
 $('repeatAreaDraw').addEventListener('click',drawReplacementArea);$('editAnalysisArea').addEventListener('click',editAnalysisArea);
 $('rainChartStatistic').addEventListener('change',rainfallChart);
