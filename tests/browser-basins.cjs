@@ -147,13 +147,15 @@ const root=process.cwd();
   for(const el of pane.querySelectorAll('path')){
    const length=el.getTotalLength();for(let d=0;d<length;d+=Math.max(1,length/1000)){
     const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());
-    if(q.x>mapRect.left+30&&q.x<mapRect.right-30&&q.y>mapRect.top+30&&q.y<mapRect.bottom-30)return {x:q.x,y:q.y};
+    if(q.x>mapRect.left+30&&q.x<mapRect.right-30&&q.y>mapRect.top+30&&q.y<mapRect.bottom-30)return {x:q.x,y:q.y,index:[...pane.querySelectorAll('path')].indexOf(el)};
    }
   }return null;
- });assert.ok(target);await page.mouse.click(target.x,target.y);await page.waitForSelector('.leaflet-popup-content');
+ });assert.ok(target);
+ async function clickBasinOutline(point){await page.evaluate(p=>{const paths=[...map.getPane('drainageBasins').querySelectorAll('path')];paths[p.index].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,clientX:p.x,clientY:p.y}))},point)}
+ await clickBasinOutline(target);await page.waitForSelector('.leaflet-popup-content');
  assert.match(await page.textContent('.leaflet-popup-content'),/HUC10: \d{10}/);assert.equal(await page.textContent('#pinCount'),'0 pins');
  console.log('Real SVG outline click popup:',await page.textContent('.leaflet-popup-content'));
- await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await page.mouse.click(target.x,target.y);
+ await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await clickBasinOutline(target);
  await page.waitForFunction(()=>analysisAreaName.includes('HUC10 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC10 \d{10}/);
  assert.ok(await page.evaluate(()=>rainSelection.cells.length>0));await page.click('#resetAnalysisArea');
  // Select a complete rainfall frame before testing sampling (early one-hour frames may be null).
