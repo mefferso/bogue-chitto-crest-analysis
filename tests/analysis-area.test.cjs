@@ -43,4 +43,3 @@ assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[1,0],
 assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[1,0],[2,0],[0,0]]]}).message,/area|degenerate/i,'collinear rings are rejected');
 assert.match(analysis.validatePolygon({type:'Polygon',coordinates:[[[0,0],[2,2],[0,2],[2,0],[0,0]]]}).message,/intersect/i,'self-intersecting rings are rejected');
 console.log('analysis-area tests passed');
-

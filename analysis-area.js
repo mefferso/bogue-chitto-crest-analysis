@@ -133,4 +133,3 @@
  root.createRainfallAreaAnalysis=createAnalysis;
  if(typeof module!=='undefined'&&module.exports)module.exports=createAnalysis;
 })(typeof window!=='undefined'?window:globalThis);
-

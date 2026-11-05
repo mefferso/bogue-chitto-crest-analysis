@@ -5,7 +5,7 @@ const root=process.cwd();
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1100}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let failAssets=false;let basinRequests=0;
+ let failAssets=false;let basinRequests=0;const basinAssetPaths=[];
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.hostname==='basins.test'){
@@ -16,7 +16,7 @@ const root=process.cwd();
     index.events.push({id:'test-no-rain',name:'No rainfall test',label:'No rainfall test',data_dir:'data/no-such-event',products:{rainfall:true,crest:false}});
     return route.fulfill({contentType:'application/json',body:JSON.stringify(index)});
    }
-   if(name.startsWith('data/basins/')){basinRequests++;if(failAssets)return route.fulfill({status:503,body:'Offline test'});}
+   if(name.startsWith('data/basins/')){basinRequests++;basinAssetPaths.push(name);if(failAssets)return route.fulfill({status:503,body:'Offline test'});}
    const file=path.join(root,name);
    if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'missing'});
    return route.fulfill({path:file,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.html')?'text/html':name.endsWith('.css')?'text/css':'application/json'});
@@ -138,9 +138,18 @@ const root=process.cwd();
  const styles=await page.locator('.drainage-basin-line').first().evaluate(el=>({opacity:el.getAttribute('stroke-opacity'),fill:el.getAttribute('fill')}));
  assert.equal(styles.opacity,'0.95');assert.equal(styles.fill,'none');
  await page.selectOption('#product','rainfall');await page.selectOption('#rainMode','one_hour');
- await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));
- assert.ok(await page.locator('.drainage-basin-line').count()>n);
- console.log('Pearl zoom:',await page.textContent('#basinStatus'));await checkLabels(12);
+ const pearlRequestCount=basinRequests;
+ await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>!map._animatingZoom);
+ assert.equal(await page.locator('.drainage-basin-line').count(),n);
+ assert.equal(basinRequests,pearlRequestCount);assert.ok(!basinAssetPaths.some(p=>p.endsWith('/huc12.geojson')));
+ console.log('Pearl zoom 12 retains HUC10:',await page.textContent('#basinStatus'));await checkLabels(10);
+ const zoomedTarget=await page.evaluate(()=>{
+  const pane=map.getPane('drainageBasins'),rect=$('map').getBoundingClientRect();
+  for(const el of pane.querySelectorAll('path')){const length=el.getTotalLength();for(let d=0;d<length;d+=Math.max(1,length/1000)){
+   const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());
+   if(q.x>rect.left+30&&q.x<rect.right-30&&q.y>rect.top+30&&q.y<rect.bottom-30)return{x:q.x,y:q.y};
+  }}return null;
+ });assert.ok(zoomedTarget,'HUC10 paths remain rendered beyond zoom 11');
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));
  const target=await page.evaluate(()=>{
   const pane=map.getPane('drainageBasins');const mapRect=$('map').getBoundingClientRect();
@@ -152,12 +161,55 @@ const root=process.cwd();
   }return null;
  });assert.ok(target);
  async function clickBasinOutline(point){await page.evaluate(p=>{const paths=[...map.getPane('drainageBasins').querySelectorAll('path')];paths[p.index].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,clientX:p.x,clientY:p.y}))},point)}
+ async function findGridBasinPoint(excludeHuc=null){return page.evaluate(exclude=>{
+  const pane=map.getPane('drainageBasins'),features=Object.values(map._layers).filter(layer=>layer?.feature&&layer._path&&pane.contains(layer._path));
+  const rect=$('map').getBoundingClientRect();
+  for(const layer of features){const huc=String(layer.feature.properties.huc);if(huc===exclude)continue;
+   const cells=areaAnalysis.mask(rainData,layer.feature).cells;
+   for(const {r,c} of cells){
+    const lat=rainData.latitudes[r],lon=rainData.longitudes[c],hasData=rainData.frames.cumulative.some(frame=>frame?.[r]?.[c]!=null);
+    if(!hasData)continue;
+    const point=map.latLngToContainerPoint([lat,lon]),x=rect.left+point.x,y=rect.top+point.y,element=document.elementFromPoint(x,y),hitLayer=features.find(candidate=>candidate._path===element),hitHuc=String(hitLayer?.feature?.properties?.huc||'');
+    if(element?.classList.contains('drainage-basin-line')&&hitHuc!==exclude&&hitHuc)return{x,y,lat,lon,huc:hitHuc,name:hitLayer.feature.properties.name};
+   }
+  }return null;
+ },excludeHuc)}
  await clickBasinOutline(target);await page.waitForSelector('.leaflet-popup-content');
  assert.match(await page.textContent('.leaflet-popup-content'),/HUC10: \d{10}/);assert.equal(await page.textContent('#pinCount'),'0 pins');
  console.log('Real SVG outline click popup:',await page.textContent('.leaflet-popup-content'));
- await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await clickBasinOutline(target);
- await page.waitForFunction(()=>analysisAreaName.includes('HUC10 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC10 \d{10}/);
- assert.ok(await page.evaluate(()=>rainSelection.cells.length>0));await page.click('#resetAnalysisArea');
+ const entireEventRainfall=await page.textContent('#rainEvent');
+ await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));
+ const basinA=await findGridBasinPoint();assert.ok(basinA,'find a rainfall-covered HUC10 basin A');
+ async function selectBasinAt(point){
+  const receivesClick=await page.evaluate(p=>document.elementFromPoint(p.x,p.y)?.classList.contains('drainage-basin-line')===true,point);
+  assert.equal(receivesClick,true,'real map click inside HUC10 '+point.huc+' reaches its basin polygon');
+  await page.mouse.click(point.x,point.y);await page.waitForFunction(huc=>analysisAreaName.includes('HUC10 '+huc),point.huc,{timeout:3000});
+  const clicked=await page.evaluate(()=>({selected:analysisAreaName,mode:$('analysisAreaMode').value,summary:$('analysisAreaSummary').textContent}));
+  assert.ok(clicked.selected.includes('HUC10 '+point.huc),'real map click should select '+point.huc+'; observed '+JSON.stringify(clicked));
+  assert.equal(await page.evaluate(()=>analysisAreaType),'basin');assert.ok(await page.evaluate(()=>rainSelection.cells.length>0));assert.equal(await page.evaluate(()=>rainAnalysis.gridCells),await page.evaluate(()=>rainSelection.cells.length));
+ }
+ await selectBasinAt(basinA);assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinA.huc));
+ const basinAStats=await page.evaluate(()=>({event:$('rainEvent').textContent,cells:rainAnalysis.gridCells,max:rainAnalysis.maxEvent?.value}));
+ assert.ok(basinAStats.cells<await page.evaluate(()=>rainData.latitudes.length*rainData.longitudes.length),'selected basin statistics use only its HUC10 geometry');
+ assert.notEqual(basinAStats.max,null,'selected basin rainfall maximum is populated');
+ await page.click('#resetAnalysisArea');assert.equal(await page.evaluate(()=>analysisGeometry),null);assert.equal(await page.textContent('#rainEvent'),entireEventRainfall);assert.equal(await page.isChecked('#drainageBasins'),true);
+ await page.selectOption('#analysisAreaMode','basin');
+ const basinB=await findGridBasinPoint(basinA.huc);assert.ok(basinB&&basinB.huc!==basinA.huc,'find a different rainfall-covered HUC10 basin B');
+ await selectBasinAt(basinB);assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinB.huc));
+ const basinBStats=await page.evaluate(()=>({event:$('rainEvent').textContent,cells:rainAnalysis.gridCells,max:rainAnalysis.maxEvent?.value}));
+ assert.ok(basinBStats.cells<await page.evaluate(()=>rainData.latitudes.length*rainData.longitudes.length));
+ assert.notEqual(basinBStats.max,null,'replacement basin rainfall maximum is populated');
+ await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
+ await page.locator('#time').evaluate(el=>{el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.selectOption('#product','rainfall');await page.waitForFunction(()=>$('status').textContent.includes('rainfall'));
+ assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinB.huc));
+ await selectBasinAt(basinA);assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinA.huc));
+ for(let cycle=0;cycle<3;cycle++){
+  await page.click('#resetAnalysisArea');assert.equal(await page.evaluate(()=>analysisGeometry),null);assert.equal(await page.isChecked('#drainageBasins'),true);
+  await page.selectOption('#analysisAreaMode','basin');await selectBasinAt(cycle%2?basinA:basinB);
+ }
+ assert.notEqual(basinAStats.event,'—','selected basin rainfall summary is populated');
+ await page.click('#resetAnalysisArea');
  // Select a complete rainfall frame before testing sampling (early one-hour frames may be null).
  await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
  // Pin sampling still works through transparent interiors; map's ordinary click handler is unchanged.
@@ -185,11 +237,17 @@ const root=process.cwd();
  assert.notDeepEqual(await checkLabels(10),pearlNames);
  await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
  assert.equal(await page.locator('.drainage-basin-line').count(),jn);await checkLabels(10);
- await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));
- console.log('Jefferson zoom:',await page.textContent('#basinStatus'));await checkLabels(12);
- const target12=await page.evaluate(()=>{const pane=map.getPane('drainageBasins'),rect=$('map').getBoundingClientRect(),paths=[...pane.querySelectorAll('path')];for(const [index,el] of paths.entries()){const n=el.getTotalLength();for(let d=0;d<n;d+=Math.max(1,n/500)){const p=el.getPointAtLength(d),q=new DOMPoint(p.x,p.y).matrixTransform(el.getScreenCTM());if(q.x>rect.left+30&&q.x<rect.right-30&&q.y>rect.top+30&&q.y<rect.bottom-30)return{x:q.x,y:q.y,index}}}return null});
- assert.ok(target12);await page.selectOption('#analysisAreaMode','basin');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));await clickBasinOutline(target12);await page.waitForFunction(()=>analysisAreaName.includes('HUC12 '));assert.match(await page.textContent('#analysisAreaSummary'),/HUC12 \d{12}/);await page.click('#resetAnalysisArea');
- await page.evaluate(()=>{map.panBy([160,80],{animate:false});});await checkLabels(12);
+ const jeffersonRequestCount=basinRequests;
+ await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>!map._animatingZoom);
+ assert.equal(await page.locator('.drainage-basin-line').count(),jn);assert.equal(basinRequests,jeffersonRequestCount);
+ console.log('Jefferson zoom 12 retains HUC10:',await page.textContent('#basinStatus'));await checkLabels(10);
+ await page.selectOption('#analysisAreaMode','basin');
+ const jeffersonTarget=await findGridBasinPoint();assert.ok(jeffersonTarget);
+ await page.mouse.click(jeffersonTarget.x,jeffersonTarget.y);
+ await page.waitForFunction(huc=>analysisAreaName.includes('HUC10 '+huc),jeffersonTarget.huc);
+ assert.equal(await page.evaluate(()=>rainAnalysis.gridCells),await page.evaluate(()=>rainSelection.cells.length));
+ await page.click('#resetAnalysisArea');assert.equal(await page.isChecked('#drainageBasins'),true);
+ await page.evaluate(()=>{map.panBy([160,80],{animate:false});});await checkLabels(10);
  await page.selectOption('#product','rainfall');await page.locator('#productOpacity').evaluate(el=>{el.value=65;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.selectOption('#rainMode','cumulative');
  await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
@@ -212,4 +270,3 @@ const root=process.cwd();
  assert.deepEqual(errors,[]);console.log('Offline static failure isolated; product remains functional; no page errors');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
-

@@ -35,6 +35,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 .basin-name{background:transparent;border:0;box-shadow:none;color:#ecfffb;font-size:11px;font-weight:600;line-height:1.2;text-align:center;white-space:normal;width:max-content;max-width:140px;padding:2px 3px;pointer-events:none!important;text-shadow:-1px -1px 0 #101827,1px -1px 0 #101827,-1px 1px 0 #101827,1px 1px 0 #101827,0 0 4px #101827}
 .basin-name:before{display:none}
 .analysis-area-line{pointer-events:none!important}
+.leaflet-analysisAreaApplied-pane canvas,.leaflet-analysisAreaDraft-pane canvas{pointer-events:none!important}
 .area-drawing-toolbar{position:absolute;z-index:1000;top:14px;right:14px;max-width:min(460px,calc(100% - 28px));padding:10px;background:#152032f2;border:1px solid #536a85;border-radius:12px;box-shadow:0 8px 28px #0008;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .area-drawing-toolbar[hidden]{display:none}
 .area-drawing-toolbar small{flex-basis:100%;line-height:1.35}
@@ -58,7 +59,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <section class="panel" aria-label="Rainfall Analysis Area"><b>Rainfall Analysis Area</b><select id="analysisAreaMode" aria-label="Rainfall Analysis Area" style="display:block;width:100%;margin-top:7px"><option value="entire">Entire Event</option><option value="rectangle">Draw Rectangle</option><option value="polygon">Draw Polygon</option><option value="basin">Select Drainage Basin</option></select><div class="area-selection"><div id="analysisAreaSummary" aria-live="polite">Entire Event · archived MRMS grid coverage</div><small id="analysisAreaDetails" class="analysis-area-note">Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.</small></div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px"><button id="editAnalysisArea" type="button" hidden>Edit Shape</button><button id="repeatAreaDraw" type="button" hidden>Draw replacement</button><button id="resetAnalysisArea" type="button" hidden>Reset to Entire Event</button></div><small id="analysisAreaMessage" role="status" aria-live="polite" class="analysis-area-note"></small></section>
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <div class="panel"><label for="product">Product</label><select id="product"><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option></select></div>
-<div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD hydrologic units: HUC10 regionally; HUC12 at zoom 11+. Names follow the active detail level; overlapping labels are hidden. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
+<div class="panel"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><small id="basinStatus" role="status" aria-live="polite">Off</small><small class="basin-note">USGS WBD HUC10 watershed boundaries and names at every zoom level; overlapping labels are hidden. Click an outline for its name and HUC. These divisions are not RFC forecast basins or exact contributing areas to river points and do not establish flooding.</small></div>
 <div class="panel"><label for="productOpacity">Product Opacity: <output id="productOpacityValue" for="productOpacity">85%</output></label><input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Product opacity"><small class="basin-note">Cells below 0.1 inch rainfall or 200 cfs/mi² CREST are not drawn.</small></div>
 <div class="panel"><label for="time">Archive time (Central)</label><input id="time" type="range" min="0" max="0" value="0" disabled>
 <div id="timeLabel">—</div><div style="display:flex;gap:8px;margin-top:8px"><button id="prev">◀ Previous</button><button id="next">Next ▶</button></div></div>
@@ -154,7 +155,7 @@ function beginSelectedAreaMode(){
  if(mode==='entire'){resetAnalysisArea();return}
  if(mode==='rectangle'||mode==='polygon'){areaDrawing.start(mode);return}
  areaDrawing.reset();if(!$('drainageBasins').checked){$('drainageBasins').checked=true;$('drainageBasins').dispatchEvent(new Event('change'))}
- showAreaMessage('Click anywhere inside a labeled HUC10 or HUC12 watershed to analyze that basin.');
+ showAreaMessage('Click anywhere inside a labeled HUC10 watershed to analyze that basin.');
 }
 function drawReplacementArea(){const mode=$('analysisAreaMode').value;if(['rectangle','polygon'].includes(mode))areaDrawing.start(mode)}
 function editAnalysisArea(){if(analysisGeometry&&analysisAreaType)areaDrawing.edit(analysisGeometry,analysisAreaType)}

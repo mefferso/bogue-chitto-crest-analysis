@@ -66,7 +66,7 @@
    clear();
    if (!toggle.checked) {status.textContent='Off';return;}
    if (!event) {status.textContent='Select an event';return;}
-   const id = event.id, level = map.getZoom() >= 11 ? 12 : 10;
+   const id = event.id, level = 10;
    status.textContent='Loading USGS WBD HUC'+level+'…';
    try {
     const index = await manifest();
@@ -104,7 +104,9 @@
   }
   toggle.addEventListener('change',update);
   map.on('zoomstart',hideLabels);
-  map.on('zoomend',update);
+  // Keep one HUC10 layer at every zoom. Zooming only repositions labels and
+  // never reloads or replaces basin geometry.
+  map.on('zoomend',positionLabels);
   map.on('moveend',positionLabels);
   return {
    setEvent(next) {event=next;return update();},
