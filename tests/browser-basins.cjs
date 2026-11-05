@@ -22,6 +22,41 @@ const root=process.cwd();
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData && document.querySelector('#status').textContent.includes('rainfall'));
  assert.equal(basinRequests,0);assert.equal(await page.isChecked('#drainageBasins'),false);
+ // Low-bin cells must leave the basemap exposed in every product/display mode.
+ for(const product of ['rainfall','crest']){
+  await page.selectOption('#product',product);
+  await page.waitForFunction(p=>$('product').value===p&&(p==='rainfall'?rainData:data),product);
+  for(const mode of (product==='rainfall'?['cumulative','one_hour','three_hour']:['frame','ever'])){
+   await page.selectOption(product==='rainfall'?'#rainMode':'#mode',mode);
+   for(const index of ['0','3','max']){
+    await page.locator('#time').evaluate((el,ix)=>{el.value=ix==='max'?el.max:ix;el.dispatchEvent(new Event('input',{bubbles:true}));},index);
+    const result=await page.evaluate(()=>{
+     const grid=currentGrid(),threshold=$('product').value==='rainfall'?0.1:200;
+     const expected=grid.frame?grid.frame.flat().filter(v=>v!==null&&v>=threshold).length:0;
+     return {expected,actual:layer.getLayers().length,gray:layer.getLayers().filter(cell=>['#a1aab5','#434958'].includes(cell.options.fillColor)).length};
+    });
+    assert.equal(result.gray,0,product+' '+mode+' '+index+' contains gray product cells');
+    assert.equal(result.actual,result.expected,product+' '+mode+' '+index+' lost meaningful colored cells');
+    assert.ok(await page.evaluate(()=>layer.getLayers().every(cell=>cell.options.fillOpacity===Number($('productOpacity').value)/100)),product+' opacity differs');
+   }
+  }
+ }
+ await page.selectOption('#product','rainfall');await page.selectOption('#rainMode','cumulative');
+ async function checkLabels(level){
+  await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
+  const details=await page.evaluate(()=>{
+   const els=[...document.querySelectorAll('.basin-name')].filter(el=>getComputedStyle(el).visibility!=='hidden');
+   return els.map(el=>({text:el.textContent,interactive:getComputedStyle(el).pointerEvents,level:el.dataset.hucLevel,rect:el.getBoundingClientRect().toJSON()}));
+  });
+  assert.ok(details.length>0,'No visible basin names');
+  assert.ok(details.every(d=>d.level===String(level)&&d.text.trim()&&d.interactive==='none'));
+  for(let i=0;i<details.length;i++)for(let j=i+1;j<details.length;j++){
+   const a=details[i].rect,b=details[j].rect;
+   if(!(a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top))console.log('Overlapping labels:',details[i],details[j]);
+   assert.ok(a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top,'Basin labels overlap');
+  }
+  return details.map(d=>d.text);
+ }
  const before=await page.evaluate(()=>({product:$('product').value,time:$('time').value,zoom:map.getZoom(),center:map.getCenter(),current:$('rainCurrent').textContent}));
  const t=Date.now();await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('hydrologic units'));
  const after=await page.evaluate(()=>({product:$('product').value,time:$('time').value,zoom:map.getZoom(),center:map.getCenter(),current:$('rainCurrent').textContent}));
@@ -29,18 +64,19 @@ const root=process.cwd();
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));
  console.log('Pearl regional:',await page.textContent('#basinStatus'));
  const n=await page.locator('.drainage-basin-line').count();assert.ok(n>0);
+ const pearlNames=await checkLabels(10);
  await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
- assert.equal(await page.locator('.drainage-basin-line').count(),n);
+ assert.equal(await page.locator('.drainage-basin-line').count(),n);await checkLabels(10);
  await page.selectOption('#mode','frame');
  await page.locator('#time').evaluate(el=>{el.value=3;el.dispatchEvent(new Event('input',{bubbles:true}))});
- assert.equal(await page.locator('.drainage-basin-line').count(),n);
+ assert.equal(await page.locator('.drainage-basin-line').count(),n);await checkLabels(10);
  await page.locator('#productOpacity').evaluate(el=>{el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))});
  const styles=await page.locator('.drainage-basin-line').first().evaluate(el=>({opacity:el.getAttribute('stroke-opacity'),fill:el.getAttribute('fill')}));
  assert.equal(styles.opacity,'0.95');assert.equal(styles.fill,'none');
  await page.selectOption('#product','rainfall');await page.selectOption('#rainMode','one_hour');
  await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));
  assert.ok(await page.locator('.drainage-basin-line').count()>n);
- console.log('Pearl zoom:',await page.textContent('#basinStatus'));
+ console.log('Pearl zoom:',await page.textContent('#basinStatus'));await checkLabels(12);
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));
  const target=await page.evaluate(()=>{
   const pane=map.getPane('drainageBasins');const mapRect=$('map').getBoundingClientRect();
@@ -58,7 +94,13 @@ const root=process.cwd();
  // Pin sampling still works through transparent interiors; map's ordinary click handler is unchanged.
  await page.evaluate(()=>{const grid=currentGrid();outer:for(let r=0;r<grid.frame.length;r++)for(let c=0;c<grid.frame[r].length;c++)if(grid.frame[r][c]!==null){map.fire('click',{latlng:L.latLng(grid.dataset.latitudes[r],grid.dataset.longitudes[c])});break outer;}});
  assert.equal(await page.textContent('#pinCount'),'1 pin');
- await page.uncheck('#drainageBasins');assert.equal(await page.locator('.drainage-basin-line').count(),0);
+ await page.uncheck('#drainageBasins');assert.equal(await page.locator('.drainage-basin-line').count(),0);assert.equal(await page.locator('.basin-name:visible').count(),0);await page.waitForFunction(()=>document.querySelectorAll('.basin-name').length===0);
+ // Turn the overlay off while Leaflet is animating a resolution change.
+ await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));
+ await page.evaluate(()=>{map.setZoom(12,{animate:true});$('drainageBasins').checked=false;$('drainageBasins').dispatchEvent(new Event('change'));});
+ await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress&&document.querySelectorAll('.basin-name').length===0);
+ assert.equal(await page.locator('.drainage-basin-line').count(),0);assert.equal(await page.textContent('#basinStatus'),'Off');
+ await page.evaluate(()=>{map.setZoom(10,{animate:false});});
  failAssets=true;await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));assert.ok(await page.locator('.drainage-basin-line').count()>0);failAssets=false;
  await page.selectOption('#eventSelect','2026-10-31_jefferson-parish-la');
  await page.waitForFunction(()=>activeEvent.id.includes('jefferson')&&rainData&&$('status').textContent.includes('rainfall'));
@@ -67,10 +109,12 @@ const root=process.cwd();
  await page.evaluate(()=>{map.setZoom(10,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC10 ·'));
  console.log('Jefferson + six neighbors:',await page.textContent('#basinStatus'));
  const jn=await page.locator('.drainage-basin-line').count();
+ assert.notDeepEqual(await checkLabels(10),pearlNames);
  await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
- assert.equal(await page.locator('.drainage-basin-line').count(),jn);
+ assert.equal(await page.locator('.drainage-basin-line').count(),jn);await checkLabels(10);
  await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>$('basinStatus').textContent.includes('HUC12 ·'));
- console.log('Jefferson zoom:',await page.textContent('#basinStatus'));
+ console.log('Jefferson zoom:',await page.textContent('#basinStatus'));await checkLabels(12);
+ await page.evaluate(()=>{map.panBy([160,80],{animate:false});});await checkLabels(12);
  await page.selectOption('#product','rainfall');await page.locator('#productOpacity').evaluate(el=>{el.value=65;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.selectOption('#rainMode','cumulative');
  await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});

@@ -100,3 +100,16 @@ Playwright under `work/` (`npm install --prefix work --no-save playwright`), run
 `NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs`. This checks both
 events, neighboring-parish coverage, product/time/mode/opacity changes, zoom detail,
 real outline clicks, sampling pins, event switching and static-asset failures.
+
+Gray low-bin product cells are not drawn: rainfall below 0.1 inch and CREST below
+200 cfs/mi² leave the basemap visible. This is a display filter only; values,
+statistics and sample calculations are unchanged. The opacity slider controls the
+remaining colored product cells.
+
+Enabled drainage basins also show small, non-interactive names with a dark halo.
+Names use the active HUC10/HUC12 resolution, falling back to HUC identifiers for
+missing or placeholder names. Labels are anchored by Leaflet at polygon centers;
+only labels within the viewport are shown, and overlapping labels are suppressed.
+Panning recalculates label visibility; zooming, event changes and toggling replace
+or remove labels together with their outlines. Clicking outlines still opens the
+name/HUC popup, and labels do not capture map clicks.
