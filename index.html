@@ -115,7 +115,11 @@ function refreshAreaAnalysis(){
  updateAnalysisAreaStats();if(rainData)rainfallChart();if($('product').value==='rainfall'&&rainData)drawRain();
 }
 function updateAnalysisAreaStats(){
- if(!rainData||!rainAnalysis)return;
+ if(!rainData||!rainAnalysis){
+  if(analysisGeometry){const area=areaAnalysis.geometryArea(analysisGeometry),crestCells=crestSelection?.cells.length||0,sqmi=area?area/2589988.110336:null,coverage=crestSelection?.coverage;
+   $('analysisAreaDetails').textContent=(analysisAreaType==='rectangle'?'Rectangle':analysisAreaType==='polygon'?'Polygon':'Drainage basin')+' · approximately '+(sqmi==null?'area unavailable':sqmi.toFixed(1)+' sq mi')+' · '+crestCells+' CREST grid cells selected'+(coverage==null?'':' · archive coverage '+coverage.toFixed(1)+'%')+'. Rainfall archive unavailable for this event.'}
+  return;
+ }
  const inches=value=>value==null?'—':fmt(value)+' in';
  const currentIndex=nearestIndex(rainData.times,selectedUtc),row=rainAnalysis.series[currentIndex],full=analysisGeometry===null,summary=rainAnalysis;
  const pick=(custom,whole)=>full?whole:custom;
