@@ -1,4 +1,4 @@
-name: Clear orphaned GitHub Pages deployment
+name: Reinitialize GitHub Pages publishing source
 on:
   push:
     branches: [main]
@@ -8,41 +8,27 @@ on:
 permissions:
   contents: read
   pages: write
-  deployments: write
 jobs:
-  clear-stale-deployment:
+  reset-publishing:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inactivate and remove only the failed GitHub deployment record
+      - name: Reassert existing Pages source without changing site files
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          set -euo pipefail
-          stuck_sha="77c4eadeaed067785e593b4f22d985cb790c401e"
-          stale_id="7582112495"
-          echo "Inspecting known stuck Pages deployment ${stuck_sha}"
-          gh api "repos/${GH_REPO}/pages/deployments/${stuck_sha}" || true
-          record=$(gh api "repos/${GH_REPO}/deployments/${stale_id}")
-          actual_sha=$(jq -r '.sha' <<<"${record}")
-          actual_env=$(jq -r '.environment' <<<"${record}")
-          if [[ "${actual_sha}" != "${stuck_sha}" || "${actual_env}" != "github-pages" ]]; then
-            echo "::error::Deployment identity changed; refusing cleanup."
-            exit 1
-          fi
-          echo "Status history for ${stale_id}:"
-          statuses=$(gh api "repos/${GH_REPO}/deployments/${stale_id}/statuses")
-          jq '[.[]|{id,state,created_at,description}]' <<<"${statuses}"
-          current=$(jq -r '.[0].state // "unknown"' <<<"${statuses}")
-          if [[ "${current}" == "success" ]]; then
-            echo "::error::Refusing to delete successful deployment"
-            exit 1
-          fi
-          echo "Marking only stale deployment ${stale_id} inactive."
-          gh api --method POST "repos/${GH_REPO}/deployments/${stale_id}/statuses" -f state=inactive -f description="Clear failed orphaned Pages deployment lock" --silent
-          echo "Deleting only stale generic deployment record ${stale_id}."
-          gh api --method DELETE "repos/${GH_REPO}/deployments/${stale_id}" --silent
-          echo "Stale generic deployment removed."
-          gh api "repos/${GH_REPO}/pages/deployments/${stuck_sha}" || true
+          set -uo pipefail
+          echo "Current publishing configuration:"
+          gh api "repos/${GH_REPO}/pages" --jq '{build_type,status,source,html_url}'
+          echo "Attempting non-destructive source reinitialization: legacy, main, root."
+          gh api --method PUT "repos/${GH_REPO}/pages" \
+            -f build_type=legacy \
+            -f 'source[branch]=main' \
+            -f 'source[path]=/' --include
+          code=$?
+          echo "Pages settings API exit code: ${code}"
+          echo "Resulting configuration:"
+          gh api "repos/${GH_REPO}/pages" --jq '{build_type,status,source,html_url}' || true
+          exit "${code}"
