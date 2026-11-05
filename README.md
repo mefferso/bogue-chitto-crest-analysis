@@ -39,8 +39,9 @@ The Generate Historical Event workflow offers **Include adjacent NWS coastal mar
 ## Drainage Basins reference overlay
 
 The **Drainage Basins** checkbox is off by default. When enabled, thin teal
-outlines show USGS Watershed Boundary Dataset (WBD) HUC10 watersheds; zoom 11+
-shows HUC12 subwatersheds instead. Click an outline for its name and HUC code.
+outlines show USGS Watershed Boundary Dataset (WBD) HUC10 watersheds at every
+zoom level. Zooming does not change basin detail or reload basin geometry. Click
+an outline for its name and HUC code.
 The overlay is independent of the product, archive timestamp, display mode,
 product-opacity slider, pins and statistics. It does not change map zoom.
 
@@ -70,8 +71,10 @@ save `land-boundary.geojson`, the exact land union before adding marine zones.
 The county reference cache records its source and retrieval time.
 
 Static GeoJSON lives under `data/basins/<land-hash>/`, shared by identical event
-footprints. `data/basins/index.json` maps event IDs to the two resolutions. The
-browser requests assets only when enabled and retains loaded assets for the session;
+footprints. `data/basins/index.json` maps event IDs to the generated HUC10 and
+HUC12 assets; the browser currently requests and displays only HUC10. HUC12 files
+are retained for possible future use. The browser requests assets only when
+enabled and retains loaded assets for the session;
 no live GIS endpoint or nationwide watershed download is required. A failed asset
 fetch displays “Drainage basins unavailable” while existing map controls work.
 Previously loaded assets can be toggled again during a connection outage. An asset
@@ -98,7 +101,8 @@ Playwright under `work/` (`npm install --prefix work --no-save playwright`), run
 `work/node_modules/.bin/playwright install --with-deps chromium`, download Leaflet
 1.9.4 JS/CSS from jsDelivr into `work/leaflet.js` and `work/leaflet.css`, then run
 `NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs`. This checks both
-events, neighboring-parish coverage, product/time/mode/opacity changes, zoom detail,
+events, neighboring-parish coverage, product/time/mode/opacity changes, fixed HUC10
+display while zooming,
 real outline clicks, sampling pins, event switching and static-asset failures.
 
 Gray low-bin product cells are not drawn: rainfall below 0.1 inch and CREST below
@@ -106,9 +110,9 @@ Gray low-bin product cells are not drawn: rainfall below 0.1 inch and CREST belo
 statistics and sample calculations are unchanged. The opacity slider controls the
 remaining colored product cells.
 
-Enabled drainage basins also show small, non-interactive names with a dark halo.
-Names use the active HUC10/HUC12 resolution, falling back to HUC identifiers for
-missing or placeholder names. Labels are anchored by Leaflet at polygon centers;
+Enabled drainage basins also show small, non-interactive HUC10 names with a dark
+halo. Names fall back to HUC identifiers for missing or placeholder names.
+Labels are anchored by Leaflet at polygon centers;
 only labels within the viewport are shown, and overlapping labels are suppressed.
 Panning recalculates label visibility; zooming, event changes and toggling replace
 or remove labels together with their outlines. Clicking outlines still opens the
