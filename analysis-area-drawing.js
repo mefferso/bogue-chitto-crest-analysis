@@ -171,9 +171,9 @@
   function onKeyDown(e){
    if(phase!=='drawing'||e.altKey||e.ctrlKey||e.metaKey)return;
    const target=e.target,tag=target?.tagName?.toLowerCase();
+   if(e.key==='Escape'){e.preventDefault();finish(true);return}
    if(['input','select','textarea','button'].includes(tag)||target?.isContentEditable)return;
-   if(e.key==='Escape'){e.preventDefault();finish(true)}
-   else if(e.key==='Backspace'&&mode==='polygon'){e.preventDefault();undoPoint()}
+   if(e.key==='Backspace'&&mode==='polygon'){e.preventDefault();undoPoint()}
   }
   function undoPoint(){
    if(phase!=='drawing'||mode!=='polygon')return;
