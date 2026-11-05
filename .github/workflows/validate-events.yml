@@ -39,14 +39,21 @@ jobs:
           python -m unittest discover -s tests -v
           node tests/basins.test.cjs
           node --check drainage-basins.js
-      - name: Chromium map interaction checks against published WBD assets
+      - name: Prepare browser validation dependencies
+        timeout-minutes: 5
         run: |
           mkdir -p work
           npm install --prefix work --no-save playwright
-          work/node_modules/.bin/playwright install --with-deps chromium
+          if command -v google-chrome >/dev/null; then
+            echo "CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          else
+            work/node_modules/.bin/playwright install --with-deps chromium
+          fi
           curl --fail --retry 3 https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js -o work/leaflet.js
           curl --fail --retry 3 https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css -o work/leaflet.css
-          NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs
+      - name: Chromium map interaction checks against published WBD assets
+        timeout-minutes: 5
+        run: NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs
       - name: YAML parse and event index checks
         run: |
           python -m pip install pyyaml
