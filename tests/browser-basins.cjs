@@ -72,7 +72,6 @@ const root=process.cwd();
    const els=[...document.querySelectorAll('.basin-name')].filter(el=>getComputedStyle(el).visibility!=='hidden');
    return els.map(el=>({text:el.textContent,interactive:getComputedStyle(el).pointerEvents,level:el.dataset.hucLevel,rect:el.getBoundingClientRect().toJSON()}));
   });
-  if(!details.length)console.log('No label diagnostics',await page.evaluate(()=>({zoom:map.getZoom(),center:map.getCenter(),size:map.getSize(),labels:[...document.querySelectorAll('.basin-name')].map(e=>({text:e.textContent,visibility:getComputedStyle(e).visibility,rect:e.getBoundingClientRect().toJSON(),map:map.getContainer().getBoundingClientRect().toJSON()}))})));
   assert.ok(details.length>0,'No visible basin names');
   assert.ok(details.every(d=>d.level===String(level)&&d.text.trim()&&d.interactive==='none'));
   for(let i=0;i<details.length;i++)for(let j=i+1;j<details.length;j++){
