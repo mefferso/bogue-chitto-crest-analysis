@@ -1,0 +1,27 @@
+name: Recover stuck GitHub Pages deployment
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/recover-pages.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+jobs:
+  cancel-stuck-pages-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel orphaned Pages deployment from November 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stuck="77c4eadeaed067785e593b4f22d985cb790c401e"
+          echo "Canceling stuck GitHub Pages deployment ${stuck}"
+          gh api --method POST "repos/${GH_REPO}/pages/deployments/${stuck}/cancel"
+          echo "Pages cancel API accepted the request."
+          echo "The latest main commit must still deploy successfully after this."
