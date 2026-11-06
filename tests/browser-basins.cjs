@@ -95,7 +95,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
      for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++){
       const point=map.latLngToContainerPoint([rainData.latitudes[y],rainData.longitudes[x]]);
       if(point.x<4||point.y<4||point.x>size.x-4||point.y>size.y-4)continue;
-      if(rain[y]?.[x]>=.1)rainPoints.push(point);if(crest[y]?.[x]>=200)crestPoints.push(point);
+      if(rain[y]?.[x]>=.1&&Number.isFinite(crest[y]?.[x]))rainPoints.push(point);if(crest[y]?.[x]>=200&&Number.isFinite(rain[y]?.[x]))crestPoints.push(point);
      }
      const rainPoint=rainPoints.find(point=>crestPoints.some(other=>point.x<other.x));
      const crestPoint=rainPoint&&crestPoints.find(point=>point.x>rainPoint.x);if(!crestPoint)continue;
@@ -106,12 +106,31 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    });
    assert.ok(sideSamples.rain&&sideSamples.crest,'both products have a colored sample point on their visible side: '+JSON.stringify(sideSamples));
    await page.mouse.click(sideSamples.rain.x,sideSamples.rain.y);await page.mouse.click(sideSamples.crest.x,sideSamples.crest.y);
-   assert.deepEqual(await page.evaluate(()=>samples.map(s=>s.product)),['rainfall','crest'],'map click samples the product visible under the pointer');
+   const expectedSideProducts=async()=>page.evaluate(()=>samples.map(entry=>{const point=map.latLngToContainerPoint([entry.lat,entry.lng]);return point.x<map.getSize().x*swipePosition/100?'rainfall':'crest'}));
+   assert.deepEqual(await expectedSideProducts(),['rainfall','crest'],'mouse clicks initially drop pins on the products visible under each location');
+   const assertSideLabels=async products=>{const actualProducts=await expectedSideProducts();if(products)assert.deepEqual(actualProducts,products);const expected=await page.evaluate(()=>samples.map(entry=>{const point=map.latLngToContainerPoint([entry.lat,entry.lng]),product=point.x<map.getSize().x*swipePosition/100?'rainfall':'crest',value=sampleAt(entry,product);return value?product==='rainfall'?Number(value.value).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1})+' in.':fmt(value.value)+' '+value.unit:'—'}));const labels=await page.locator('.pin-label').allTextContents();assert.deepEqual(labels,expected,'pin values refresh from the currently revealed product');for(let i=0;i<actualProducts.length;i++)if(labels[i]!=='—')assert.ok(actualProducts[i]==='rainfall'?/\d[\d,]*\.\d in\.$/.test(labels[i]):/\d[\d,]*(?:\.\d)? cfs\/mi²$/.test(labels[i]),'pin label follows visible '+actualProducts[i]+' product: '+labels[i])};
+   const initialPinState=await page.evaluate(()=>{window.__pinMarkerRefs=samples.map(pin=>pinMarkers.get(pin.id));return samples.map(({lat,lng})=>({lat,lng}))});
+   const initialSwipePosition=await page.evaluate(()=>swipePosition),currentMapBox=await page.locator('#map').boundingBox(),dividerBox=await page.locator('#swipeDivider').boundingBox(),pinPixels=await page.evaluate(()=>samples.map(entry=>map.latLngToContainerPoint([entry.lat,entry.lng]).x));
+   const pinLeft=currentMapBox.x+Math.max(2,Math.min(...pinPixels)-currentMapBox.width*.02),pinRight=currentMapBox.x+Math.min(currentMapBox.width-2,Math.max(...pinPixels)+currentMapBox.width*.02);
+   await page.mouse.move(dividerBox.x+dividerBox.width/2,currentMapBox.y+currentMapBox.height/2);await page.mouse.down();await page.mouse.move(pinLeft,currentMapBox.y+currentMapBox.height/2,{steps:5});await assertSideLabels(['crest','crest']);
+   await page.mouse.move(pinRight,currentMapBox.y+currentMapBox.height/2,{steps:8});await assertSideLabels(['rainfall','rainfall']);
+   await page.mouse.move(currentMapBox.x+currentMapBox.width*initialSwipePosition/100,currentMapBox.y+currentMapBox.height/2,{steps:8});await page.mouse.up();await assertSideLabels(['rainfall','crest']);
+   assert.deepEqual(await page.evaluate(()=>samples.map(({lat,lng})=>({lat,lng}))),initialPinState,'moving the divider keeps each pin at the same geographic coordinates');
+   assert.equal(await page.evaluate(()=>samples.every((pin,index)=>pinMarkers.get(pin.id)===window.__pinMarkerRefs[index])),true,'divider changes reuse existing marker instances');
    const pinLabels=await page.locator('.pin-label').allTextContents();
-   const expectedPinLabels=await page.evaluate(()=>samples.map(entry=>{const value=sampleAt(entry,entry.product);return value?fmt(value.value)+' '+(value.unit==='in'?'in.':value.unit):'N/A'}));
+   const expectedPinLabels=await page.evaluate(()=>samples.map(entry=>{const point=map.latLngToContainerPoint([entry.lat,entry.lng]),product=point.x<map.getSize().x*swipePosition/100?'rainfall':'crest',value=sampleAt(entry,product);return value?product==='rainfall'?Number(value.value).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1})+' in.':fmt(value.value)+' '+value.unit:'—'}));
    assert.deepEqual(pinLabels,expectedPinLabels,'visible pins contain only sampled values and units');
    const pinStyle=await page.locator('.pin-label').first().evaluate(el=>({background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,border:getComputedStyle(el).borderTopColor}));
    assert.deepEqual(pinStyle,{background:'rgb(255, 255, 255)',color:'rgb(0, 0, 0)',border:'rgb(0, 0, 0)'},'pin labels use a white background and black ring');
+   await page.evaluate(()=>window.scrollTo(0,0));const pinView=await page.evaluate(()=>{const center=map.getCenter();return{center:[center.lat,center.lng],zoom:map.getZoom()}}),panBox=await page.locator('#map').boundingBox();
+   await page.mouse.move(panBox.x+panBox.width*.08,panBox.y+panBox.height*.83);await page.mouse.down();await page.mouse.move(panBox.x+panBox.width*.22,panBox.y+panBox.height*.83,{steps:6});await page.mouse.up();
+   await page.waitForFunction(()=>!map._panAnim?._inProgress);await assertSideLabels();
+   await page.locator('.leaflet-control-zoom-in').click();await page.waitForFunction(()=>!map._animatingZoom);await assertSideLabels();
+   await page.setViewportSize({width:980,height:1000});await assertSideLabels();await page.setViewportSize({width:1440,height:1100});await assertSideLabels();
+   assert.deepEqual(await page.evaluate(()=>samples.map(({lat,lng})=>({lat,lng}))),initialPinState,'pan and zoom preserve pin geography');
+   await page.evaluate(view=>{map.setView(view.center,view.zoom,{animate:false})},pinView);await assertSideLabels();
+   await page.locator('#time').evaluate(el=>{el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))});await assertSideLabels();const beforePlayback=await page.evaluate(()=>selectedUtc);
+   await page.click('#playPause');await page.waitForFunction(before=>selectedUtc!==before&&$('playPause').dataset.playing==='true',beforePlayback,{timeout:3000});await assertSideLabels();await page.click('#playPause');await page.evaluate(()=>window.scrollTo(0,0));
    await page.click('#clearPins');
    await page.screenshot({path:'work/swipe-product-check.png'});
   } else assert.equal(await page.locator('#swipeDivider').isVisible(),false,`${mode} hides swipe divider`);
@@ -137,20 +156,21 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   },product);
   assert.ok(candidate,product+' has a visible colored grid cell for real mouse sampling');
   await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},candidate.index);
+  const previousCount=await page.evaluate(()=>samples.length);
   await page.mouse.click(candidate.x,candidate.y);
-  await page.waitForFunction(product=>samples.at(-1)?.product===product,product);
+  await page.waitForFunction(count=>samples.length>count,previousCount);
  }
  async function assertPinValues(){
   const expected=await page.evaluate(()=>samples.map(entry=>{
-   let dataset,frame,unit;
-   if(entry.product==='rainfall'){
-    dataset=rainData;unit='in';const resolved=$('product').value==='rainfall'?{index:Number($('time').value)}:archiveTimeline.resolveRainfall(rainData.times,selectedUtc);frame=resolved?rainData.frames[$('rainMode').value]?.[resolved.index]:null;
+   const mapMode=$('product').value,point=map.latLngToContainerPoint([entry.lat,entry.lng]),product=mapMode==='swipe'?(point.x<map.getSize().x*swipePosition/100?'rainfall':'crest'):mapMode;let dataset,frame,unit;
+   if(product==='rainfall'){
+    dataset=rainData;unit='in';const resolved=mapMode==='rainfall'?{index:Number($('time').value)}:archiveTimeline.resolveRainfall(rainData.times,selectedUtc);frame=resolved?rainData.frames[$('rainMode').value]?.[resolved.index]:null;
    }else{
-    dataset=data;unit='cfs/mi²';let index=$('product').value==='crest'?Number($('time').value):$('product').value==='swipe'?archiveTimeline.resolveCrest(data.times,selectedUtc)?.index:archiveTimeline.nearest(data.times,selectedUtc);frame=$('mode').value==='ever'?data.ever_max:index==null?null:data.frames[index];
+    dataset=data;unit='cfs/mi²';let index=mapMode==='crest'?Number($('time').value):mapMode==='swipe'?archiveTimeline.resolveCrest(data.times,selectedUtc)?.index:archiveTimeline.nearest(data.times,selectedUtc);frame=$('mode').value==='ever'?data.ever_max:index==null?null:data.frames[index];
    }
-   if(!frame)return'N/A';const row=dataset.latitudes.reduce((best,value,i)=>Math.abs(value-entry.lat)<Math.abs(dataset.latitudes[best]-entry.lat)?i:best,0),col=dataset.longitudes.reduce((best,value,i)=>Math.abs(value-entry.lng)<Math.abs(dataset.longitudes[best]-entry.lng)?i:best,0),value=frame[row]?.[col];return value==null||!Number.isFinite(value)?'N/A':fmt(value)+' '+(unit==='in'?'in.':unit);
+   if(!frame)return'—';const row=dataset.latitudes.reduce((best,value,i)=>Math.abs(value-entry.lat)<Math.abs(dataset.latitudes[best]-entry.lat)?i:best,0),col=dataset.longitudes.reduce((best,value,i)=>Math.abs(value-entry.lng)<Math.abs(dataset.longitudes[best]-entry.lng)?i:best,0),value=frame[row]?.[col];return value==null||!Number.isFinite(value)?'—':unit==='in'?Number(value).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1})+' in.':fmt(value)+' '+unit;
   }));
-  assert.deepEqual(await page.locator('.pin-label').allTextContents(),expected,'pins stay tied to their sampled product and update to the active archive time');
+  assert.deepEqual(await page.locator('.pin-label').allTextContents(),expected,'pins follow the visible product at their current location and archive time');
  }
  await addSingleProductPin('rainfall');await assertPinValues();
  const previousPinTime=await page.evaluate(()=>selectedUtc),nextRainIndex=await page.evaluate(()=>Math.min(Number($('time').value)+1,Number($('time').max)));
@@ -158,7 +178,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},nextRainIndex);
  assert.notEqual(await page.evaluate(()=>selectedUtc),previousPinTime,'timeline stepping changes the selected archive time');await assertPinValues();
  await page.locator('[name="productMode"][value="crest"]').check();await assertPinValues();
- await addSingleProductPin('crest');await assertPinValues();assert.deepEqual(await page.evaluate(()=>samples.map(entry=>entry.product)),['rainfall','crest']);
+ await addSingleProductPin('crest');await assertPinValues();assert.equal(await page.evaluate(()=>samples.length),2);
  for(const product of ['swipe','rainfall','crest']){await page.locator(`[name="productMode"][value="${product}"]`).check();await assertPinValues()}
  await page.click('#clearPins');await page.waitForFunction(()=>document.querySelectorAll('.pin-label').length===0);assert.equal(await page.locator('.pin-label').count(),0,'clearing pins removes their compact labels');await page.evaluate(()=>window.scrollTo(0,0));
  await page.locator('[name="productMode"][value="crest"]').check();
@@ -398,10 +418,15 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.selectOption('#eventSelect','test-gap');await page.waitForFunction(()=>activeEvent.id==='test-gap'&&rainData&&data);
  assert.equal(await page.locator('[name="productMode"][value="swipe"]').isDisabled(),false);
  await page.locator('[name="productMode"][value="swipe"]').check();
+ await page.evaluate(()=>window.scrollTo(0,0));
+ const gapPin=await page.evaluate(()=>{const rect=$('map').getBoundingClientRect();for(let i=0;i<data.times.length;i++)for(let y=0;y<data.latitudes.length;y++)for(let x=0;x<data.longitudes.length;x++)if(data.frames[i]?.[y]?.[x]>=200){const point=map.latLngToContainerPoint([data.latitudes[y],data.longitudes[x]]);if(point.x>5&&point.y>5&&point.x<map.getSize().x-5&&point.y<map.getSize().y-5)return{index:activeTimes().findIndex(row=>Date.parse(row.utc)===Date.parse(data.times[i].utc)),lat:data.latitudes[y],lng:data.longitudes[x],x:rect.left+point.x,y:rect.top+point.y}}return null});
+ assert.ok(gapPin&&gapPin.index>=0,'missing-frame fixture includes a valid CREST pin location');await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},gapPin.index);await page.evaluate(()=>setSwipePosition(0));await page.mouse.click(gapPin.x,gapPin.y);
+ await page.waitForFunction(()=>samples.length===1);assert.match(await page.locator('.pin-label').textContent(),/cfs\/mi²$/,'pin starts with the actual CREST sample at its location');
  const gapIndex=await page.evaluate(target=>activeTimes().findIndex(row=>Date.parse(row.utc)===Date.parse(target)),missingCrestUtc);assert.ok(gapIndex>=0);
  await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},gapIndex);
  await page.waitForFunction(()=>$('archiveStatus').textContent.includes('CREST frame unavailable'));
  assert.equal(await page.textContent('#currentPeak'),'—','missing CREST timestamp remains unavailable');
+ assert.equal(await page.locator('.pin-label').textContent(),'—','missing CREST frame clears the old pin value instead of keeping stale text');
  const selectedGap=await page.evaluate(()=>selectedUtc);await page.locator('[name="productMode"][value="crest"]').check();
  assert.ok(Math.abs(Date.parse(await page.evaluate(()=>selectedUtc))-Date.parse(selectedGap))<=600000,'switching product retains the nearest available archive time');
  await page.locator('[name="productMode"][value="swipe"]').check();
@@ -409,6 +434,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},rainGap);
  await page.waitForFunction(()=>$('archiveStatus').textContent.includes('MRMS three hour frame unavailable'));
  assert.equal(await page.evaluate(()=>rainLayer.getLayers().length),0,'missing rainfall mode frame is not drawn as zero');
+ await page.evaluate(()=>setSwipePosition(100));assert.equal(await page.locator('.pin-label').textContent(),'—','missing rainfall mode frame does not retain the previously visible CREST value');
  await page.selectOption('#eventSelect','2026-10-31_pearl-river-ms');await page.waitForFunction(()=>activeEvent.id.includes('pearl')&&rainData&&data);
  await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);assert.equal(await page.isDisabled('#showCrest'),true);assert.match(await page.getAttribute('#showCrest','title'),/unavailable/i);
