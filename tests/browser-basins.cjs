@@ -86,14 +86,21 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    assert.equal(await page.evaluate(()=>crestLayer.getLayers().filter(cell=>cell._productVisible).every(cell=>cell.options.fillOpacity===.7)),true,'CREST opacity is independent');
    await page.locator('#rainOpacity').evaluate(el=>{el.value='85';el.dispatchEvent(new Event('input',{bubbles:true}))});await page.locator('#crestOpacity').evaluate(el=>{el.value='85';el.dispatchEvent(new Event('input',{bubbles:true}))});
    const sideSamples=await page.evaluate(()=>{
-    const mapBox=$('map').getBoundingClientRect(),time=selectedUtc,r=archiveTimeline.resolveRainfall(rainData.times,time),c=archiveTimeline.resolveCrest(data.times,time),rain=rainData.frames[$('rainMode').value][r.index],crest=$('mode').value==='ever'?data.ever_max:data.frames[c.index],cut=map.getSize().x*swipePosition/100,out={};
-    for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++){
-     const point=map.latLngToContainerPoint([rainData.latitudes[y],rainData.longitudes[x]]);
-     if(point.x<4||point.y<4||point.x>map.getSize().x-4||point.y>map.getSize().y-4)continue;
-     if(!out.rain&&point.x<cut&&rain[y]?.[x]>=.1)out.rain={x:mapBox.left+point.x,y:mapBox.top+point.y};
-     if(!out.crest&&point.x>=cut&&crest[y]?.[x]>=200)out.crest={x:mapBox.left+point.x,y:mapBox.top+point.y};
+    const mapBox=$('map').getBoundingClientRect(),size=map.getSize();$('mode').value='frame';$('rainMode').value='cumulative';
+    for(let i=0;i<activeTimes().length;i++){
+     const utc=activeTimes()[i].utc,r=archiveTimeline.resolveRainfall(rainData.times,utc),c=archiveTimeline.resolveCrest(data.times,utc);if(!r||!c)continue;
+     const rain=rainData.frames.cumulative[r.index],crest=data.frames[c.index],rainPoints=[],crestPoints=[];
+     for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++){
+      const point=map.latLngToContainerPoint([rainData.latitudes[y],rainData.longitudes[x]]);
+      if(point.x<4||point.y<4||point.x>size.x-4||point.y>size.y-4)continue;
+      if(rain[y]?.[x]>=.1)rainPoints.push(point);if(crest[y]?.[x]>=200)crestPoints.push(point);
+     }
+     const rainPoint=rainPoints.find(point=>crestPoints.some(other=>point.x<other.x));
+     const crestPoint=rainPoint&&crestPoints.find(point=>point.x>rainPoint.x);if(!crestPoint)continue;
+     const cut=(rainPoint.x+crestPoint.x)/2;selectedUtc=utc;$('time').value=i;setSwipePosition(cut/size.x*100);renderSelectedTime();
+     return {rain:{x:mapBox.left+rainPoint.x,y:mapBox.top+rainPoint.y},crest:{x:mapBox.left+crestPoint.x,y:mapBox.top+crestPoint.y}};
     }
-    return out;
+    return {};
    });
    assert.ok(sideSamples.rain&&sideSamples.crest,'both products have a colored sample point on their visible side: '+JSON.stringify(sideSamples));
    await page.mouse.click(sideSamples.rain.x,sideSamples.rain.y);await page.mouse.click(sideSamples.crest.x,sideSamples.crest.y);
