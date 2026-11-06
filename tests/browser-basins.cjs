@@ -201,6 +201,10 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
  await page.selectOption('#analysisAreaMode','rectangle');
+ // Selecting the sidebar control can scroll the long dashboard down until the
+ // map's mouse coordinates are outside the viewport. Keep real pointer drags
+ // on the map at visible, non-negative screen coordinates.
+ await page.evaluate(()=>window.scrollTo(0,0));
  await dragRectangle(reference.points);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle');
  const rectangleStats=await page.evaluate(()=>({cells:rainSelection.cells.length,max:rainAnalysis.maxEvent?.value,mean:rainAnalysis.meanEvent}));
