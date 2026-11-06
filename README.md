@@ -117,3 +117,66 @@ only labels within the viewport are shown, and overlapping labels are suppressed
 Panning recalculates label visibility; zooming, event changes and toggling replace
 or remove labels together with their outlines. Clicking outlines still opens the
 name/HUC popup, and labels do not capture map clicks.
+
+## Product controls, comparison and playback
+
+The compact bar above the map selects **MRMS Rainfall**, **CREST Unit Streamflow**,
+or **Both — Swipe Comparison**. Drainage Basins is a separate toggle in that bar,
+so HUC10 boundaries and labels can be used with any product. Its adjacent info
+button opens the watershed limitations by click, keyboard or touch. On smaller
+screens the controls wrap. The sidebar retains the product display options and
+statistics; the map and existing charts stay in place.
+
+Swipe Comparison uses two aligned Leaflet product panes in the existing map. The
+divider starts centered; drag it with a mouse or touch, or focus it and use the
+arrow keys (Home/End move to either edge). Rainfall is on the left and CREST on
+the right. Click either side to add a sample pin for the product visible there;
+each pin identifies its product, value, units and valid time. Rainfall and CREST
+have independent opacity controls and retain their existing display modes:
+event accumulation, rolling 1-hour, or rolling 3-hour rainfall; selected-time or
+event-maximum CREST. The two product legends retain inches and cfs/mi² units.
+Drainage boundaries, analysis drawings, applied geometry and map navigation stay
+above/below the clipped product panes and remain usable in comparison mode.
+
+Playback controls beneath the map provide Play/Pause, previous/next frame, a
+timeline slider, 0.5×/1×/2×/4× pacing, and looping (on by default). The base frame
+interval is 500 ms, divided by the selected speed; speed changes animation pace,
+not meteorological time. Scrubbing pauses playback. Event changes, unavailable
+archives, hidden tabs and page exit stop the timer. Loading another event starts
+at its first available timestamp; switching product modes keeps the nearest
+available point to the current time.
+
+The archive timeline contains actual source timestamps. In swipe mode it is the
+sorted union of rainfall and CREST times: rainfall holds its latest real hourly
+frame until another product timestamp is reached, while CREST is shown only for
+an exact model timestamp. Missing frames remain unavailable (not zero and not
+interpolated). Status text distinguishes each source's valid time and rainfall
+accumulation interval from the selected timeline time. CREST event-maximum mode
+continues to show the event maximum at each grid cell. If an event has no usable
+CREST archive, rainfall remains available and CREST/swipe choices are disabled.
+Some older events may have incomplete product coverage or gaps; these display
+limitations do not change archived values, thresholds, sampling calculations or
+analysis-area statistics.
+
+The dashboard presents NOAA MRMS quantitative precipitation estimates and FLASH
+CREST **modeled unit streamflow**, not observed discharge. Rainfall below 0.1 inch
+and CREST below 200 cfs/mi² are hidden from the map only; analytical calculations
+and thresholds are unchanged. Neither product display implies flood severity.
+
+### Browser regression checks
+
+The Chromium checks exercise real mouse drag, pan and zoom interactions, touch
+and keyboard divider input, product toggles, sampling on both swipe sides, basin
+selection/reset, playback and missing-frame fixtures, and rectangle/polygon
+analysis drawing. The existing drawing suite also verifies review, apply,
+edit/cancel and event-reset behavior. After installing Playwright and local
+Leaflet assets as described above, run:
+
+```sh
+NODE_PATH="$PWD/work/node_modules" node tests/browser-basins.cjs
+NODE_PATH="$PWD/work/node_modules" node tests/browser-analysis-area-ui.cjs
+node tests/archive-timeline.test.cjs
+```
+
+The event validation workflow runs the same browser checks along with Python,
+JavaScript, event-index and workflow YAML validation.

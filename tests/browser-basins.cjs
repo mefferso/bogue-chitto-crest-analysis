@@ -1,9 +1,11 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
 const root=process.cwd();
+const gapRainSource=JSON.parse(fs.readFileSync(path.join(root,'data/events/2026-10-31_jefferson-parish-la/rainfall.json'),'utf8'));
+const missingCrestUtc=gapRainSource.times[4].utc;
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),headless:true,args:['--no-sandbox']});
- const page=await browser.newPage({viewport:{width:1440,height:1100}});
+ const page=await browser.newPage({viewport:{width:1440,height:1100},hasTouch:true});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  let failAssets=false;let basinRequests=0;const basinAssetPaths=[];
  await page.route('**/*',async route=>{
@@ -14,7 +16,18 @@ const root=process.cwd();
     const index=JSON.parse(fs.readFileSync(path.join(root,name),'utf8'));
     index.events.push({id:'test-rain-only',name:'Rainfall only test',label:'Rainfall only test',start_utc:'2026-10-31T19:00:00Z',end_utc:'2026-11-01T08:00:00Z',data_dir:'data/events/2026-10-31_jefferson-parish-la',products:{rainfall:true,crest:false}});
     index.events.push({id:'test-no-rain',name:'No rainfall test',label:'No rainfall test',data_dir:'data/no-such-event',products:{rainfall:true,crest:false}});
+    index.events.push({id:'test-gap',name:'Missing frame test',label:'Missing frame test',start_utc:'2026-10-31T19:00:00Z',end_utc:'2026-11-01T08:00:00Z',data_dir:'fixtures/test-gap',products:{rainfall:true,crest:true}});
     return route.fulfill({contentType:'application/json',body:JSON.stringify(index)});
+   }
+   if(name==='fixtures/test-gap/rainfall.json'){
+    const archive=JSON.parse(fs.readFileSync(path.join(root,'data/events/2026-10-31_jefferson-parish-la/rainfall.json'),'utf8'));
+    archive.frames.three_hour[4]=null;return route.fulfill({contentType:'application/json',body:JSON.stringify(archive)});
+   }
+   if(name==='fixtures/test-gap/dashboard.json'){
+    const archive=JSON.parse(fs.readFileSync(path.join(root,'data/events/2026-10-31_jefferson-parish-la/dashboard.json'),'utf8'));
+    const ix=archive.times.findIndex(row=>Date.parse(row.utc)===Date.parse(missingCrestUtc));
+    assert.ok(ix>=0,'fixture target aligns to an original CREST timestamp');archive.times.splice(ix,1);archive.frames.splice(ix,1);
+    return route.fulfill({contentType:'application/json',body:JSON.stringify(archive)});
    }
    if(name.startsWith('data/basins/')){basinRequests++;basinAssetPaths.push(name);if(failAssets)return route.fulfill({status:503,body:'Offline test'});}
    const file=path.join(root,name);
@@ -27,6 +40,77 @@ const root=process.cwd();
  });
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData&&data&&document.querySelector('#status').textContent.includes('rainfall'));
+ for(const mode of ['rainfall','crest','swipe']){
+  const choice=page.locator(`[name="productMode"][value="${mode}"]`);
+  assert.equal(await choice.isVisible(),true,`${mode} is a visible product choice`);
+  await choice.check();assert.equal(await choice.isChecked(),true,`${mode} is selected`);
+  assert.equal(await page.locator('[name="productMode"]:checked').count(),1,'product choices are mutually exclusive');
+  if(mode==='swipe'){
+   assert.equal(await page.locator('#swipeDivider').isVisible(),true,'swipe divider is visible');
+   assert.ok(Math.abs(await page.evaluate(()=>Number($('swipeDivider').dataset.position||50))-50)<0.1,'initial divider position is 50%');
+   const mapBox=await page.locator('#map').boundingBox(),handle=await page.locator('#swipeDivider').boundingBox();
+   await page.mouse.move(handle.x+handle.width/2,mapBox.y+mapBox.height/2);await page.mouse.down();await page.mouse.move(mapBox.x+mapBox.width*.24,mapBox.y+mapBox.height/2,{steps:5});await page.mouse.up();
+   assert.ok(Math.abs((await page.evaluate(()=>Number($('swipeDivider').dataset.position)))-24)<1,'real mouse drag moves divider left');
+   await page.mouse.move(mapBox.x+mapBox.width*.24,mapBox.y+mapBox.height/2);await page.mouse.down();await page.mouse.move(mapBox.x+mapBox.width*.76,mapBox.y+mapBox.height/2,{steps:5});await page.mouse.up();
+   assert.ok(Math.abs((await page.evaluate(()=>Number($('swipeDivider').dataset.position)))-76)<1,'real mouse drag moves divider right');
+   const centeredHandle=await page.locator('#swipeDivider').boundingBox();await page.mouse.move(centeredHandle.x+centeredHandle.width/2,mapBox.y+mapBox.height/2);await page.mouse.down();await page.mouse.move(mapBox.x+mapBox.width*.5,mapBox.y+mapBox.height/2,{steps:4});await page.mouse.up();
+   await page.locator('#swipeDivider').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#swipeDivider').getAttribute('aria-valuenow'),'52');await page.keyboard.press('Home');assert.equal(await page.locator('#swipeDivider').getAttribute('aria-valuenow'),'0');await page.keyboard.press('End');assert.equal(await page.locator('#swipeDivider').getAttribute('aria-valuenow'),'100');
+   for(let i=0;i<25;i++)await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('#swipeDivider').getAttribute('aria-valuenow'),'50','keyboard restores the divider to center');
+   const touch=await page.context().newCDPSession(page);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+   const touchBox=await page.locator('#map').boundingBox(),touchStart={x:touchBox.x+touchBox.width*.5,y:touchBox.y+touchBox.height*.5};
+   await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...touchStart,radiusX:8,radiusY:8,force:1}]});
+   await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:touchBox.x+touchBox.width*.62,y:touchStart.y,radiusX:8,radiusY:8,force:1}]});
+   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+   assert.ok(Math.abs(Number(await page.locator('#swipeDivider').getAttribute('aria-valuenow'))-62)<2,'touch drag moves the divider: '+await page.locator('#swipeDivider').getAttribute('aria-valuenow'));await touch.detach();
+   for(let i=0;i<6;i++)await page.keyboard.press('ArrowLeft');
+   await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile layout has no horizontal page overflow');await page.setViewportSize({width:1440,height:1100});
+   const wetIndex=await page.evaluate(()=>activeTimes().findIndex(({utc})=>{const r=archiveTimeline.resolveRainfall(rainData.times,utc),c=archiveTimeline.resolveCrest(data.times,utc);return r&&c&&rainData.frames.cumulative[r.index]?.flat().some(v=>v>=.1)&&data.frames[c.index]?.flat().some(v=>v>=200)}));
+   assert.ok(wetIndex>=0,'fixture has a native time with colored frames in both products');
+   await page.evaluate(index=>{selectedUtc=activeTimes()[index].utc;$('time').value=index;drawRain();draw()},wetIndex);
+   const viewBeforePan=await page.evaluate(()=>{const center=map.getCenter();return{center:[center.lat,center.lng],zoom:map.getZoom()}}),startX=mapBox.x+mapBox.width*.88,startY=mapBox.y+mapBox.height*.8;
+   await page.mouse.move(startX,startY);await page.mouse.down();await page.mouse.move(startX-45,startY-35,{steps:5});await page.mouse.up();
+   await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
+   assert.notDeepEqual(await page.evaluate(()=>{const center=map.getCenter();return[center.lat,center.lng]}),viewBeforePan.center,'real mouse pan changes the shared map view');
+   await page.locator('.leaflet-control-zoom-in').click();await page.waitForFunction(()=>!map._animatingZoom);
+   const clipAlignment=await page.evaluate(()=>{const mapRect=map.getContainer().getBoundingClientRect(),rain=map.getPane('rainfallProduct'),crest=map.getPane('crestProduct'),rainRect=rain.getBoundingClientRect(),crestRect=crest.getBoundingClientRect(),rainRight=Number(getComputedStyle(rain).clipPath.match(/inset\(0px ([\d.]+)px/)[1]),crestLeft=Number(getComputedStyle(crest).clipPath.match(/inset\(0px 0px 0px ([\d.]+)px/)[1]),cut=mapRect.left+mapRect.width*swipePosition/100;return{rainError:Math.abs((rainRect.width-rainRight)-(cut-rainRect.left)),crestError:Math.abs(crestLeft-(cut-crestRect.left)),position:swipePosition}});
+   assert.ok(clipAlignment.rainError<1&&clipAlignment.crestError<1&&Math.abs(clipAlignment.position-50)<.1,'product clips stay screen-aligned through pan/zoom: '+JSON.stringify(clipAlignment));
+   await page.evaluate(view=>{map.setView(view.center,view.zoom,{animate:false})},viewBeforePan);
+   const frameCounts=await page.evaluate(()=>({rain:rainLayer.getLayers().length,crest:crestLayer.getLayers().length}));
+   assert.ok(frameCounts.rain>0&&frameCounts.crest>0,'swipe renders rainfall and CREST layers together: '+JSON.stringify(frameCounts));
+   const reuse=await page.evaluate(next=>{window.__rainCell=rainLayer.getLayers()[0];$('mode').value='ever';renderSelectedTime();window.__crestCell=crestLayer.getLayers()[0];setArchiveIndex(next);return{rain:window.__rainCell===rainLayer.getLayers()[0],crest:window.__crestCell===crestLayer.getLayers()[0]}},Math.min(wetIndex+1,Number(await page.locator('#time').getAttribute('max'))));
+   assert.deepEqual(reuse,{rain:true,crest:true},'product grid cell layers are reused across animation frames');
+   await page.evaluate(index=>{$('mode').value='frame';setArchiveIndex(index)},wetIndex);
+   await page.locator('#rainOpacity').evaluate(el=>{el.value='40';el.dispatchEvent(new Event('input',{bubbles:true}))});
+   await page.locator('#crestOpacity').evaluate(el=>{el.value='70';el.dispatchEvent(new Event('input',{bubbles:true}))});
+   assert.equal(await page.evaluate(()=>rainLayer.getLayers().filter(cell=>cell._productVisible).every(cell=>cell.options.fillOpacity===.4)),true,'rainfall opacity is independent');
+   assert.equal(await page.evaluate(()=>crestLayer.getLayers().filter(cell=>cell._productVisible).every(cell=>cell.options.fillOpacity===.7)),true,'CREST opacity is independent');
+   await page.locator('#rainOpacity').evaluate(el=>{el.value='85';el.dispatchEvent(new Event('input',{bubbles:true}))});await page.locator('#crestOpacity').evaluate(el=>{el.value='85';el.dispatchEvent(new Event('input',{bubbles:true}))});
+   const sideSamples=await page.evaluate(()=>{
+    const mapBox=$('map').getBoundingClientRect(),time=selectedUtc,r=archiveTimeline.resolveRainfall(rainData.times,time),c=archiveTimeline.resolveCrest(data.times,time),rain=rainData.frames[$('rainMode').value][r.index],crest=$('mode').value==='ever'?data.ever_max:data.frames[c.index],cut=map.getSize().x*swipePosition/100,out={};
+    for(let y=0;y<rainData.latitudes.length;y++)for(let x=0;x<rainData.longitudes.length;x++){
+     const point=map.latLngToContainerPoint([rainData.latitudes[y],rainData.longitudes[x]]);
+     if(point.x<4||point.y<4||point.x>map.getSize().x-4||point.y>map.getSize().y-4)continue;
+     if(!out.rain&&point.x<cut&&rain[y]?.[x]>=.1)out.rain={x:mapBox.left+point.x,y:mapBox.top+point.y};
+     if(!out.crest&&point.x>=cut&&crest[y]?.[x]>=200)out.crest={x:mapBox.left+point.x,y:mapBox.top+point.y};
+    }
+    return out;
+   });
+   assert.ok(sideSamples.rain&&sideSamples.crest,'both products have a colored sample point on their visible side: '+JSON.stringify(sideSamples));
+   await page.mouse.click(sideSamples.rain.x,sideSamples.rain.y);await page.mouse.click(sideSamples.crest.x,sideSamples.crest.y);
+   assert.deepEqual(await page.evaluate(()=>samples.map(s=>s.product)),['rainfall','crest'],'map click samples the product visible under the pointer');
+   const pinLabels=await page.locator('.pin-label').allTextContents();
+   assert.ok(pinLabels.some(label=>/MRMS Rainfall.*in.*valid/.test(label))&&pinLabels.some(label=>/CREST Unit Streamflow.*cfs\/mi².*valid/.test(label)),JSON.stringify(pinLabels));
+   await page.click('#clearPins');
+   await page.screenshot({path:'work/swipe-product-check.png'});
+  } else assert.equal(await page.locator('#swipeDivider').isVisible(),false,`${mode} hides swipe divider`);
+  await page.check('#drainageBasins');assert.equal(await page.isChecked('#drainageBasins'),true,`basins can be enabled in ${mode}`);
+  await page.uncheck('#drainageBasins');assert.equal(await page.isChecked('#drainageBasins'),false,`basins can be disabled in ${mode}`);
+  assert.equal(await choice.isChecked(),true,`basin toggle does not change ${mode}`);
+ }
+ await page.click('#basinInfo');assert.equal(await page.locator('#basinHelp').isVisible(),true);assert.match(await page.textContent('#basinHelp'),/RFC forecast basins or exact upstream contributing areas/);
+ await page.locator('#basinInfo').focus();await page.keyboard.press('Enter');assert.equal(await page.locator('#basinHelp').isVisible(),false,'basin explanation toggles by keyboard');
+ const infoBox=await page.locator('#basinInfo').boundingBox();await page.touchscreen.tap(infoBox.x+infoBox.width/2,infoBox.y+infoBox.height/2);assert.equal(await page.locator('#basinHelp').isVisible(),true,'basin explanation opens by touch');await page.touchscreen.tap(infoBox.x+infoBox.width/2,infoBox.y+infoBox.height/2);
+ await page.locator('[name="productMode"][value="crest"]').check();
  async function dragRectangle(points){
   await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
   const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
@@ -55,11 +139,12 @@ const root=process.cwd();
  assert.equal(await page.textContent('#rainMeanEvent'),format(rectangleStats.mean)+' in','rectangle mean follows its selected cells');
  assert.equal(await page.locator('#resetAnalysisArea').isVisible(),true);
  await page.selectOption('#rainChartStatistic','mean');assert.match(await page.textContent('#chartReadout'),/Event:/);
- await page.selectOption('#product','crest');await page.check('#showCrest');assert.equal(await page.evaluate(()=>analysisGeometry!==null),true);
+ await page.locator('[name="productMode"][value="crest"]').check();await page.check('#showCrest');assert.equal(await page.evaluate(()=>analysisGeometry!==null),true);
  assert.ok(await page.locator('#rainChart path[stroke="#a0e28b"]').count()>0);
- await page.selectOption('#product','rainfall');await page.selectOption('#analysisAreaMode','polygon');
+ await page.locator('[name="productMode"][value="rainfall"]').check();await page.selectOption('#analysisAreaMode','polygon');
  const polygon=await page.evaluate(ref=>{const lat=rainData.latitudes[ref.r],lon=rainData.longitudes[ref.c],dy=rainData.dlat*.49,dx=rainData.dlon*.49;return [[lat-dy,lon-dx],[lat-dy,lon+dx],[lat+dy,lon+dx],[lat+dy,lon-dx]]},reference);
- await page.evaluate(points=>points.forEach(([lat,lng])=>map.fire('click',{latlng:L.latLng(lat,lng)})),polygon);
+ const polygonPixels=await page.evaluate(points=>points.map(([lat,lng])=>{const rect=$('map').getBoundingClientRect(),point=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+point.x,y:rect.top+point.y}}),polygon);
+ for(const point of polygonPixels)await page.mouse.click(point.x,point.y);
  if(await page.locator('#finishAreaPolygon').isVisible())await page.click('#finishAreaPolygon');
  await page.waitForFunction(()=>$('applyAreaDrawing').hidden===false);await applyArea();await page.waitForFunction(()=>analysisAreaName==='Drawn polygon');
  assert.deepEqual(await page.evaluate(()=>rainSelection.cells.map(({r,c})=>[r,c])),[[reference.r,reference.c]]);
@@ -67,11 +152,11 @@ const root=process.cwd();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle'&&rainAnalysis.gridCells===0);
  assert.match(await page.textContent('#analysisAreaMessage'),/No archived rainfall grid cells/);
  await page.click('#resetAnalysisArea');await page.selectOption('#rainChartStatistic','maximum');assert.equal(await page.evaluate(()=>analysisGeometry),null);
- assert.equal(basinRequests,0);assert.equal(await page.isChecked('#drainageBasins'),false);
+ assert.ok(basinRequests>=1,'independent basin-toggle checks exercised lazy asset loading');assert.equal(await page.isChecked('#drainageBasins'),false);
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);
  async function chartCursorUtc(){return await page.evaluate(()=>{const line=[...$('rainChart').querySelectorAll('line')].find(el=>el.getAttribute('stroke')==='#fff');if(!line)return null;const t0=Date.parse(rainData.times[0].utc),t1=Date.parse(rainData.times.at(-1).utc),x=Number(line.getAttribute('x1'));return new Date(t0+(x-66)/(1100-66-78)*(t1-t0)).toISOString()})}
  async function nearestRainUtc(anchor){return await page.evaluate(anchor=>rainData.times.reduce((best,row)=>Math.abs(Date.parse(row.utc)-Date.parse(anchor))<Math.abs(Date.parse(best.utc)-Date.parse(anchor))?row:best).utc,anchor)}
- await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST')&&data&&rainData);
+ await page.locator('[name="productMode"][value="crest"]').check();await page.waitForFunction(()=>$('status').textContent.startsWith('CREST')&&data&&rainData);
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);
  let expectedAnchor=await page.evaluate(()=>selectedUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(expectedAnchor)))<1000);
  await page.locator('#time').evaluate(el=>{el.value='37';el.dispatchEvent(new Event('input',{bubbles:true}))});
@@ -82,13 +167,13 @@ const root=process.cwd();
  await page.waitForFunction(before=>selectedUtc!==before,beforeClick);
  const clickedAnchor=await page.evaluate(()=>({utc:selectedUtc,idx:Number($('time').value),mapUtc:data.times[Number($('time').value)].utc}));
  assert.equal(clickedAnchor.utc,clickedAnchor.mapUtc);assert.ok(Math.abs(Date.parse(await chartCursorUtc())-Date.parse(await nearestRainUtc(clickedAnchor.utc)))<1000);
- await page.selectOption('#product','rainfall');assert.equal(await page.isChecked('#showCrest'),true);
+ await page.locator('[name="productMode"][value="rainfall"]').check();assert.equal(await page.isChecked('#showCrest'),true);
  assert.equal(await page.locator('#rainChart path[stroke="#a0e28b"]').count()>0,true);
- await page.selectOption('#product','crest');assert.equal(await page.isChecked('#showCrest'),true);
- await page.selectOption('#product','rainfall');
+ await page.locator('[name="productMode"][value="crest"]').check();assert.equal(await page.isChecked('#showCrest'),true);
+ await page.locator('[name="productMode"][value="rainfall"]').check();
  // Low-bin cells must leave the basemap exposed in every product/display mode.
  for(const product of ['rainfall','crest']){
-  await page.selectOption('#product',product);
+  await page.locator(`[name="productMode"][value="${product}"]`).check();
   await page.waitForFunction(p=>$('product').value===p&&(p==='rainfall'?rainData:data),product);
   for(const mode of (product==='rainfall'?['cumulative','one_hour','three_hour']:['frame','ever'])){
    await page.selectOption(product==='rainfall'?'#rainMode':'#mode',mode);
@@ -97,15 +182,15 @@ const root=process.cwd();
     const result=await page.evaluate(()=>{
      const grid=currentGrid(),threshold=$('product').value==='rainfall'?0.1:200;
      const expected=grid.frame?grid.frame.flat().filter(v=>v!==null&&v>=threshold).length:0;
-     return {expected,actual:layer.getLayers().length,gray:layer.getLayers().filter(cell=>['#a1aab5','#434958'].includes(cell.options.fillColor)).length};
+     const visible=layer.getLayers().filter(cell=>cell._productVisible);return {expected,actual:visible.length,gray:visible.filter(cell=>['#a1aab5','#434958'].includes(cell.options.fillColor)).length};
     });
     assert.equal(result.gray,0,product+' '+mode+' '+index+' contains gray product cells');
     assert.equal(result.actual,result.expected,product+' '+mode+' '+index+' lost meaningful colored cells');
-    assert.ok(await page.evaluate(()=>layer.getLayers().every(cell=>cell.options.fillOpacity===Number($('productOpacity').value)/100)),product+' opacity differs');
+    assert.ok(await page.evaluate(()=>layer.getLayers().filter(cell=>cell._productVisible).every(cell=>cell.options.fillOpacity===Number($('productOpacity').value)/100)),product+' opacity differs');
    }
   }
  }
- await page.selectOption('#product','rainfall');await page.selectOption('#rainMode','cumulative');
+ await page.locator('[name="productMode"][value="rainfall"]').check();await page.selectOption('#rainMode','cumulative');
  async function checkLabels(level){
   await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
   const details=await page.evaluate(()=>{
@@ -129,7 +214,7 @@ const root=process.cwd();
  console.log('Pearl regional:',await page.textContent('#basinStatus'));
  const n=await page.locator('.drainage-basin-line').count();assert.ok(n>0);
  const pearlNames=await checkLabels(10);
- await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
+ await page.locator('[name="productMode"][value="crest"]').check();await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
  assert.equal(await page.locator('.drainage-basin-line').count(),n);await checkLabels(10);
  await page.selectOption('#mode','frame');
  await page.locator('#time').evaluate(el=>{el.value=3;el.dispatchEvent(new Event('input',{bubbles:true}))});
@@ -137,12 +222,18 @@ const root=process.cwd();
  await page.locator('#productOpacity').evaluate(el=>{el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))});
  const styles=await page.locator('.drainage-basin-line').first().evaluate(el=>({opacity:el.getAttribute('stroke-opacity'),fill:el.getAttribute('fill')}));
  assert.equal(styles.opacity,'0.95');assert.equal(styles.fill,'none');
- await page.selectOption('#product','rainfall');await page.selectOption('#rainMode','one_hour');
+ await page.locator('[name="productMode"][value="rainfall"]').check();await page.selectOption('#rainMode','one_hour');
  const pearlRequestCount=basinRequests;
  await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>!map._animatingZoom);
  assert.equal(await page.locator('.drainage-basin-line').count(),n);
  assert.equal(basinRequests,pearlRequestCount);assert.ok(!basinAssetPaths.some(p=>p.endsWith('/huc12.geojson')));
  console.log('Pearl zoom 12 retains HUC10:',await page.textContent('#basinStatus'));await checkLabels(10);
+ await page.locator('[name="productMode"][value="swipe"]').check();await page.selectOption('#analysisAreaMode','basin');
+ const swipeBasin=await findGridBasinPoint();assert.ok(swipeBasin,'find basin interior beneath active swipe products');await page.mouse.click(swipeBasin.x,swipeBasin.y);
+ await page.waitForFunction(huc=>analysisAreaName.includes('HUC10 '+huc),swipeBasin.huc);assert.equal(await page.evaluate(()=>analysisAreaType),'basin','HUC10 selection works while the product panes are clipped');
+ await page.click('#resetAnalysisArea');await page.selectOption('#analysisAreaMode','basin');
+ const swipeBasinAgain=await findGridBasinPoint(swipeBasin.huc);assert.ok(swipeBasinAgain,'reset leaves another HUC10 selectable in swipe mode');await page.mouse.click(swipeBasinAgain.x,swipeBasinAgain.y);
+ await page.waitForFunction(huc=>analysisAreaName.includes('HUC10 '+huc),swipeBasinAgain.huc);await page.click('#resetAnalysisArea');
  const zoomedTarget=await page.evaluate(()=>{
   const pane=map.getPane('drainageBasins'),rect=$('map').getBoundingClientRect();
   for(const el of pane.querySelectorAll('path')){const length=el.getTotalLength();for(let d=0;d<length;d+=Math.max(1,length/1000)){
@@ -199,9 +290,9 @@ const root=process.cwd();
  const basinBStats=await page.evaluate(()=>({event:$('rainEvent').textContent,cells:rainAnalysis.gridCells,max:rainAnalysis.maxEvent?.value}));
  assert.ok(basinBStats.cells<await page.evaluate(()=>rainData.latitudes.length*rainData.longitudes.length));
  assert.notEqual(basinBStats.max,null,'replacement basin rainfall maximum is populated');
- await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
+ await page.locator('[name="productMode"][value="crest"]').check();await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
  await page.locator('#time').evaluate(el=>{el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}))});
- await page.selectOption('#product','rainfall');await page.waitForFunction(()=>$('status').textContent.includes('rainfall'));
+ await page.locator('[name="productMode"][value="rainfall"]').check();await page.waitForFunction(()=>$('status').textContent.includes('rainfall'));
  assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinB.huc));
  await selectBasinAt(basinA);assert.match(await page.textContent('#analysisAreaSummary'),new RegExp('HUC10 '+basinA.huc));
  for(let cycle=0;cycle<3;cycle++){
@@ -235,7 +326,7 @@ const root=process.cwd();
  console.log('Jefferson + six neighbors:',await page.textContent('#basinStatus'));
  const jn=await page.locator('.drainage-basin-line').count();
  assert.notDeepEqual(await checkLabels(10),pearlNames);
- await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
+ await page.locator('[name="productMode"][value="crest"]').check();await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
  assert.equal(await page.locator('.drainage-basin-line').count(),jn);await checkLabels(10);
  const jeffersonRequestCount=basinRequests;
  await page.evaluate(()=>{map.setZoom(12,{animate:false});});await page.waitForFunction(()=>!map._animatingZoom);
@@ -248,16 +339,51 @@ const root=process.cwd();
  assert.equal(await page.evaluate(()=>rainAnalysis.gridCells),await page.evaluate(()=>rainSelection.cells.length));
  await page.click('#resetAnalysisArea');assert.equal(await page.isChecked('#drainageBasins'),true);
  await page.evaluate(()=>{map.panBy([160,80],{animate:false});});await checkLabels(10);
- await page.selectOption('#product','rainfall');await page.locator('#productOpacity').evaluate(el=>{el.value=65;el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.locator('[name="productMode"][value="rainfall"]').check();await page.locator('#productOpacity').evaluate(el=>{el.value=65;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.selectOption('#rainMode','cumulative');
  await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.screenshot({path:'work/jefferson-basins.png',fullPage:true});
  await page.selectOption('#eventSelect','2026-10-31_pearl-river-ms');await page.waitForFunction(()=>rainData&&activeEvent.id.includes('pearl')&&$('status').textContent.includes('rainfall'));
+ await page.selectOption('#eventSelect','test-gap');await page.waitForFunction(()=>activeEvent.id==='test-gap'&&rainData&&data);
+ assert.equal(await page.locator('[name="productMode"][value="swipe"]').isDisabled(),false);
+ await page.locator('[name="productMode"][value="swipe"]').check();
+ const gapIndex=await page.evaluate(target=>activeTimes().findIndex(row=>Date.parse(row.utc)===Date.parse(target)),missingCrestUtc);assert.ok(gapIndex>=0);
+ await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},gapIndex);
+ await page.waitForFunction(()=>$('archiveStatus').textContent.includes('CREST frame unavailable'));
+ assert.equal(await page.textContent('#currentPeak'),'—','missing CREST timestamp remains unavailable');
+ const selectedGap=await page.evaluate(()=>selectedUtc);await page.locator('[name="productMode"][value="crest"]').check();
+ assert.ok(Math.abs(Date.parse(await page.evaluate(()=>selectedUtc))-Date.parse(selectedGap))<=600000,'switching product retains the nearest available archive time');
+ await page.locator('[name="productMode"][value="swipe"]').check();
+ await page.selectOption('#rainMode','three_hour');const rainGap=await page.evaluate(target=>activeTimes().findIndex(row=>Date.parse(row.utc)===Date.parse(target)),gapRainSource.times[4].utc);
+ await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},rainGap);
+ await page.waitForFunction(()=>$('archiveStatus').textContent.includes('MRMS three hour frame unavailable'));
+ assert.equal(await page.evaluate(()=>rainLayer.getLayers().length),0,'missing rainfall mode frame is not drawn as zero');
+ await page.selectOption('#eventSelect','2026-10-31_pearl-river-ms');await page.waitForFunction(()=>activeEvent.id.includes('pearl')&&rainData&&data);
  await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);assert.equal(await page.isDisabled('#showCrest'),true);assert.match(await page.getAttribute('#showCrest','title'),/unavailable/i);
+ assert.equal(await page.locator('[name="productMode"][value="crest"]').isDisabled(),true,'CREST-only mode is unavailable when the event has no CREST archive');
+ assert.equal(await page.locator('[name="productMode"][value="swipe"]').isDisabled(),true,'swipe mode is unavailable when either archive is absent');
  let missingRainRequests=0;await page.route('**/data/no-such-event/rainfall.json',route=>{missingRainRequests++;return route.fulfill({status:404,body:'missing'})});
  await page.selectOption('#eventSelect','test-no-rain');await page.waitForFunction(()=>$('rainChartMessage').textContent.includes('unavailable'));
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);assert.equal(missingRainRequests,1);
+ await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
+ const playbackStart=await page.evaluate(()=>selectedUtc);
+ await page.click('#playPause');
+ await page.waitForFunction(start=>selectedUtc!==start&&$('playPause').dataset.playing==='true',playbackStart,{timeout:3000});
+ await page.click('#playPause');const pausedAt=await page.evaluate(()=>selectedUtc);await page.waitForTimeout(650);
+ assert.equal(await page.evaluate(()=>selectedUtc),pausedAt,'pause stops the archive timer');
+ assert.deepEqual(await page.locator('#playbackSpeed option').evaluateAll(options=>options.map(o=>o.value)),['0.5','1','2','4']);
+ await page.selectOption('#playbackSpeed','4');await page.locator('#time').evaluate(el=>{el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.click('#playPause');await page.waitForFunction(()=>Number($('time').value)>=3,{timeout:2000});await page.click('#playPause');
+ await page.click('#playPause');await page.locator('#time').focus();await page.keyboard.press('End');
+ assert.equal(await page.locator('#playPause').getAttribute('data-playing'),'false','manual keyboard scrubbing pauses playback');
+ await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.click('#playPause');await page.waitForFunction(()=>Number($('time').value)===0&&$('playPause').dataset.playing==='true',{timeout:3000});
+ await page.uncheck('#playbackLoop');await page.locator('#time').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.click('#playPause');await page.waitForFunction(()=>$('playPause').dataset.playing==='false'&&$('playPause').textContent.includes('Play'),{timeout:3000});
+ await page.check('#playbackLoop');await page.locator('#time').evaluate(el=>{el.value=0;el.dispatchEvent(new Event('input',{bubbles:true}))});await page.click('#playPause');
+ await page.selectOption('#eventSelect','test-no-rain');await page.waitForFunction(()=>activeEvent.id==='test-no-rain'&&$('rainChartMessage').textContent.includes('unavailable'));
+ assert.equal(await page.locator('#playPause').getAttribute('data-playing'),'false','switching events pauses playback');
  await page.selectOption('#eventSelect','test-rain-only');await page.waitForFunction(()=>activeEvent.id==='test-rain-only'&&rainData&&$('status').textContent.includes('rainfall'));
  await page.uncheck('#drainageBasins');
  assert.equal(await page.locator('.drainage-basin-line').count(),0);
@@ -265,7 +391,7 @@ const root=process.cwd();
  failAssets=true;await page.reload();await page.waitForFunction(()=>rainData&&$('status').textContent.includes('rainfall'));
  await page.check('#drainageBasins');await page.waitForFunction(()=>$('basinStatus').textContent.includes('unavailable'));
  assert.equal(await page.locator('.drainage-basin-line').count(),0);
- await page.selectOption('#product','crest');await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
+ await page.locator('[name="productMode"][value="crest"]').check();await page.waitForFunction(()=>$('status').textContent.startsWith('CREST'));
  await page.selectOption('#mode','ever');await page.waitForFunction(()=>layer.getLayers().length>0);
  assert.deepEqual(errors,[]);console.log('Offline static failure isolated; product remains functional; no page errors');
  await browser.close();
