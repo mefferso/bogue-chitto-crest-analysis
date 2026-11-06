@@ -125,6 +125,7 @@ let data,layer=L.layerGroup().addTo(map),rainLayer=L.layerGroup().addTo(map),cre
 const rainCellPool=new Map(),crestCellPool=new Map();
 let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
 let swipePosition=50;
+let refreshPinLabels=()=>{};
 function updateSwipeClip(){
  const mapRect=map.getContainer().getBoundingClientRect(),cutX=mapRect.left+mapRect.width*swipePosition/100;
  const mapSize=map.getSize();
@@ -138,7 +139,7 @@ function updateSwipeClip(){
 function setSwipePosition(value){
  swipePosition=Math.max(0,Math.min(100,Number(value)||0));const divider=$('swipeDivider');
  divider.style.left=swipePosition+'%';divider.dataset.position=String(swipePosition);divider.setAttribute('aria-valuenow',String(Math.round(swipePosition)));
- updateSwipeClip();
+ updateSwipeClip();refreshPinLabels();
 }
 const swipeDivider=$('swipeDivider');
 L.DomEvent.disableClickPropagation(swipeDivider);
@@ -148,7 +149,7 @@ swipeDivider.addEventListener('pointermove',event=>{if(swipeDivider.dataset.drag
 swipeDivider.addEventListener('pointerup',event=>{swipeDivider.dataset.dragging='false';if(swipeDivider.hasPointerCapture(event.pointerId))swipeDivider.releasePointerCapture(event.pointerId)});
 swipeDivider.addEventListener('pointercancel',()=>{swipeDivider.dataset.dragging='false'});
 swipeDivider.addEventListener('keydown',event=>{let next=swipePosition;if(event.key==='ArrowLeft')next-=2;else if(event.key==='ArrowRight')next+=2;else if(event.key==='Home')next=0;else if(event.key==='End')next=100;else return;event.preventDefault();setSwipePosition(next)});
-map.on('move zoom resize',updateSwipeClip);setSwipePosition(50);
+map.on('move zoom resize',()=>{updateSwipeClip();refreshPinLabels()});setSwipePosition(50);
 let boundaryLayer=L.geoJSON(null,{style:{color:'#ffffff',weight:2,opacity:.8,fill:false,dashArray:'6 5'},interactive:false}).addTo(map);
 const basinOverlay=createDrainageBasins({map,L,toggle:$('drainageBasins'),status:$('basinStatus'),onBasinClick:selectBasinForAnalysis});
 map.createPane('analysisAreaApplied');map.getPane('analysisAreaApplied').style.zIndex='470';
@@ -310,22 +311,23 @@ map.on('mouseout',()=>$('mapHoverValue').style.display='none');
 function updatePins(){
  const active=new Set();
  for(let i=0;i<samples.length;i++){
-   const entry=samples[i],product=entry.product||$('product').value,v=sampleAt(entry,product);active.add(entry.id);
-   const label=v?fmt(v.value)+' '+(v.unit==='in'?'in.':v.unit):'N/A';
+   const entry=samples[i],screenPoint=map.latLngToContainerPoint([entry.lat,entry.lng]),product=$('product').value==='swipe'?(screenPoint.x<map.getSize().x*swipePosition/100?'rainfall':'crest'):$('product').value,v=sampleAt(entry,product);active.add(entry.id);
+   const label=v?(v.unit==='in'?Number(v.value).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1})+' in.':fmt(v.value)+' '+v.unit):'—';
    let marker=pinMarkers.get(entry.id);
    if(!marker){marker=L.circleMarker([entry.lat,entry.lng],{radius:6,color:'#000',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(pinLayer);marker.bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'pin-label'});pinMarkers.set(entry.id,marker)}
-   else marker.setLatLng([entry.lat,entry.lng]);
-   marker.setTooltipContent(label);if(!marker.isTooltipOpen())marker.openTooltip();
+   else {const position=marker.getLatLng();if(position.lat!==entry.lat||position.lng!==entry.lng)marker.setLatLng([entry.lat,entry.lng])}
+   if(marker.getTooltip().getContent()!==label)marker.setTooltipContent(label);if(!marker.isTooltipOpen())marker.openTooltip();
  }
  for(const [id,marker]of pinMarkers)if(!active.has(id)){marker.unbindTooltip();pinLayer.removeLayer(marker);pinMarkers.delete(id)}
  $('pinCount').textContent=samples.length+' pin'+(samples.length===1?'':'s');
 }
+refreshPinLabels=updatePins;
 map.on('click',e=>{
  if(areaDrawing.mapClick(e.latlng))return;
  if($('analysisAreaMode').value==='basin')return;
  const product=$('product').value==='swipe'?(e.containerPoint.x<map.getSize().x*swipePosition/100?'rainfall':'crest'):$('product').value;
  if(!sampleAt(e.latlng,product))return;
- samples.push({id:++nextPinId,lat:e.latlng.lat,lng:e.latlng.lng,product});updatePins();
+ samples.push({id:++nextPinId,lat:e.latlng.lat,lng:e.latlng.lng});updatePins();
 });
 $('clearPins').addEventListener('click',()=>{samples.length=0;updatePins()});
 const rainBins=[0,0.1,0.25,0.5,1,2,3,5,8,12];

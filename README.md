@@ -132,10 +132,12 @@ divider starts centered; drag it with a mouse or touch, or focus it and use the
 arrow keys (Home/End move to either edge). Rainfall is on the left and CREST on
 the right. Click either side to add a sample pin for the product visible there.
 Pin labels show only the sampled value and units (`in.` or `cfs/mi²`) on a white
-background with a black outline. Each pin stays bound to the product sampled when
-it was placed, including across product-mode switches, and its value refreshes
-with the archive cursor using that product's native grid. Rainfall and CREST have
-independent opacity controls and retain their existing display modes:
+background with a black outline. In swipe mode each pin follows the divider at
+its current map position and shows the product revealed there; in single-product
+modes every pin shows that selected product. Pin values refresh during divider
+dragging, map movement, archive playback, and product-mode changes, using native
+grid times and the existing rainfall hold behavior. A missing value shows `—`.
+Rainfall and CREST have independent opacity controls and retain their existing display modes:
 event accumulation, rolling 1-hour, or rolling 3-hour rainfall; selected-time or
 event-maximum CREST. The two product legends retain inches and cfs/mi² units.
 Drainage boundaries, analysis drawings, applied geometry and map navigation stay
