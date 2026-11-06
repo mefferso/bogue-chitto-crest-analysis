@@ -202,7 +202,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.2,dw=rainData.dlon*.2;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
- await page.evaluate(({lat,lon})=>map.setView([lat,lon],10,{animate:false}),reference);
+ await page.evaluate(({lat,lon})=>map.setView([lat,lon],10,{animate:false}),{lat:reference.lat,lon:reference.lon});
  await page.selectOption('#analysisAreaMode','rectangle');
  await dragRectangle(reference.points);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle');
