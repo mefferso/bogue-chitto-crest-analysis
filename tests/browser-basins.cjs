@@ -48,6 +48,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   if(mode==='swipe'){
    assert.equal(await page.locator('#swipeDivider').isVisible(),true,'swipe divider is visible');
    assert.ok(Math.abs(await page.evaluate(()=>Number($('swipeDivider').dataset.position||50))-50)<0.1,'initial divider position is 50%');
+   const pinsBeforeSwipeHandle=await page.evaluate(()=>samples.length);
    const mapBox=await page.locator('#map').boundingBox(),handle=await page.locator('#swipeDivider').boundingBox();
    await page.mouse.move(handle.x+handle.width/2,mapBox.y+mapBox.height/2);await page.mouse.down();await page.mouse.move(mapBox.x+mapBox.width*.24,mapBox.y+mapBox.height/2,{steps:5});await page.mouse.up();
    assert.ok(Math.abs((await page.evaluate(()=>Number($('swipeDivider').dataset.position)))-24)<1,'real mouse drag moves divider left');
@@ -62,6 +63,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:touchBox.x+touchBox.width*.62,y:touchStart.y,radiusX:8,radiusY:8,force:1}]});
    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    assert.ok(Math.abs(Number(await page.locator('#swipeDivider').getAttribute('aria-valuenow'))-62)<2,'touch drag moves the divider: '+await page.locator('#swipeDivider').getAttribute('aria-valuenow'));await touch.detach();
+   assert.equal(await page.evaluate(()=>samples.length),pinsBeforeSwipeHandle,'swipe-handle mouse/touch/keyboard interaction does not drop sample pins');
    for(let i=0;i<6;i++)await page.keyboard.press('ArrowLeft');
    await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile layout has no horizontal page overflow');await page.setViewportSize({width:1440,height:1100});
    const wetIndex=await page.evaluate(()=>activeTimes().findIndex(({utc})=>{const r=archiveTimeline.resolveRainfall(rainData.times,utc),c=archiveTimeline.resolveCrest(data.times,utc);return r&&c&&rainData.frames.cumulative[r.index]?.flat().some(v=>v>=.1)&&data.frames[c.index]?.flat().some(v=>v>=200)}));
@@ -106,7 +108,10 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    await page.mouse.click(sideSamples.rain.x,sideSamples.rain.y);await page.mouse.click(sideSamples.crest.x,sideSamples.crest.y);
    assert.deepEqual(await page.evaluate(()=>samples.map(s=>s.product)),['rainfall','crest'],'map click samples the product visible under the pointer');
    const pinLabels=await page.locator('.pin-label').allTextContents();
-   assert.ok(pinLabels.some(label=>/MRMS Rainfall.*in.*valid/.test(label))&&pinLabels.some(label=>/CREST Unit Streamflow.*cfs\/mi².*valid/.test(label)),JSON.stringify(pinLabels));
+   const expectedPinLabels=await page.evaluate(()=>samples.map(entry=>{const value=sampleAt(entry,entry.product);return value?fmt(value.value)+' '+(value.unit==='in'?'in.':value.unit):'N/A'}));
+   assert.deepEqual(pinLabels,expectedPinLabels,'visible pins contain only sampled values and units');
+   const pinStyle=await page.locator('.pin-label').first().evaluate(el=>({background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,border:getComputedStyle(el).borderTopColor}));
+   assert.deepEqual(pinStyle,{background:'rgb(255, 255, 255)',color:'rgb(0, 0, 0)',border:'rgb(0, 0, 0)'},'pin labels use a white background and black ring');
    await page.click('#clearPins');
    await page.screenshot({path:'work/swipe-product-check.png'});
   } else assert.equal(await page.locator('#swipeDivider').isVisible(),false,`${mode} hides swipe divider`);
@@ -117,6 +122,45 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.click('#basinInfo');assert.equal(await page.locator('#basinHelp').isVisible(),true);assert.match(await page.textContent('#basinHelp'),/RFC forecast basins or exact upstream contributing areas/);
  await page.locator('#basinInfo').focus();await page.keyboard.press('Enter');assert.equal(await page.locator('#basinHelp').isVisible(),false,'basin explanation toggles by keyboard');
  const infoBox=await page.locator('#basinInfo').boundingBox();await page.touchscreen.tap(infoBox.x+infoBox.width/2,infoBox.y+infoBox.height/2);assert.equal(await page.locator('#basinHelp').isVisible(),true,'basin explanation opens by touch');await page.touchscreen.tap(infoBox.x+infoBox.width/2,infoBox.y+infoBox.height/2);
+ async function addSingleProductPin(product){
+  await page.locator(`[name="productMode"][value="${product}"]`).check();
+  if(product==='rainfall')await page.selectOption('#rainMode','cumulative');else await page.selectOption('#mode','frame');
+  const candidate=await page.evaluate(product=>{
+   const dataset=product==='rainfall'?rainData:data,frames=product==='rainfall'?rainData.frames.cumulative:data.frames,threshold=product==='rainfall'?.1:200,times=activeTimes(product),box=$('map').getBoundingClientRect();
+   for(let i=0;i<times.length;i++){
+    const sourceIndex=product==='rainfall'?i:archiveTimeline.resolveCrest(data.times,times[i].utc)?.index,frame=sourceIndex==null?null:frames[sourceIndex];if(!frame)continue;
+    for(let y=0;y<dataset.latitudes.length;y++)for(let x=0;x<dataset.longitudes.length;x++)if(frame[y]?.[x]>=threshold){
+     const pixel=map.latLngToContainerPoint([dataset.latitudes[y],dataset.longitudes[x]]);if(pixel.x>5&&pixel.y>5&&pixel.x<map.getSize().x-5&&pixel.y<map.getSize().y-5)return{index:i,lat:dataset.latitudes[y],lng:dataset.longitudes[x],x:box.left+pixel.x,y:box.top+pixel.y};
+    }
+   }
+   return null;
+  },product);
+  assert.ok(candidate,product+' has a visible colored grid cell for real mouse sampling');
+  await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},candidate.index);
+  await page.mouse.click(candidate.x,candidate.y);
+  await page.waitForFunction(product=>samples.at(-1)?.product===product,product);
+ }
+ async function assertPinValues(){
+  const expected=await page.evaluate(()=>samples.map(entry=>{
+   let dataset,frame,unit;
+   if(entry.product==='rainfall'){
+    dataset=rainData;unit='in';const resolved=$('product').value==='rainfall'?{index:Number($('time').value)}:archiveTimeline.resolveRainfall(rainData.times,selectedUtc);frame=resolved?rainData.frames[$('rainMode').value]?.[resolved.index]:null;
+   }else{
+    dataset=data;unit='cfs/mi²';let index=$('product').value==='crest'?Number($('time').value):$('product').value==='swipe'?archiveTimeline.resolveCrest(data.times,selectedUtc)?.index:archiveTimeline.nearest(data.times,selectedUtc);frame=$('mode').value==='ever'?data.ever_max:index==null?null:data.frames[index];
+   }
+   if(!frame)return'N/A';const row=dataset.latitudes.reduce((best,value,i)=>Math.abs(value-entry.lat)<Math.abs(dataset.latitudes[best]-entry.lat)?i:best,0),col=dataset.longitudes.reduce((best,value,i)=>Math.abs(value-entry.lng)<Math.abs(dataset.longitudes[best]-entry.lng)?i:best,0),value=frame[row]?.[col];return value==null||!Number.isFinite(value)?'N/A':fmt(value)+' '+(unit==='in'?'in.':unit);
+  }));
+  assert.deepEqual(await page.locator('.pin-label').allTextContents(),expected,'pins stay tied to their sampled product and update to the active archive time');
+ }
+ await addSingleProductPin('rainfall');await assertPinValues();
+ const previousPinTime=await page.evaluate(()=>selectedUtc),nextRainIndex=await page.evaluate(()=>Math.min(Number($('time').value)+1,Number($('time').max)));
+ assert.ok(nextRainIndex>Number(await page.locator('#time').inputValue()),'fixture offers another rainfall timestamp');
+ await page.locator('#time').evaluate((el,index)=>{el.value=index;el.dispatchEvent(new Event('input',{bubbles:true}))},nextRainIndex);
+ assert.notEqual(await page.evaluate(()=>selectedUtc),previousPinTime,'timeline stepping changes the selected archive time');await assertPinValues();
+ await page.locator('[name="productMode"][value="crest"]').check();await assertPinValues();
+ await addSingleProductPin('crest');await assertPinValues();assert.deepEqual(await page.evaluate(()=>samples.map(entry=>entry.product)),['rainfall','crest']);
+ for(const product of ['swipe','rainfall','crest']){await page.locator(`[name="productMode"][value="${product}"]`).check();await assertPinValues()}
+ await page.click('#clearPins');await page.waitForFunction(()=>document.querySelectorAll('.pin-label').length===0);assert.equal(await page.locator('.pin-label').count(),0,'clearing pins removes their compact labels');await page.evaluate(()=>window.scrollTo(0,0));
  await page.locator('[name="productMode"][value="crest"]').check();
  async function dragRectangle(points){
   await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
