@@ -183,8 +183,10 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.click('#clearPins');await page.waitForFunction(()=>document.querySelectorAll('.pin-label').length===0);assert.equal(await page.locator('.pin-label').count(),0,'clearing pins removes their compact labels');await page.evaluate(()=>window.scrollTo(0,0));
  await page.locator('[name="productMode"][value="crest"]').check();
  async function dragRectangle(points){
+  await page.locator('#map').scrollIntoViewIfNeeded();
   await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
   const pixels=await page.evaluate(values=>{const rect=$('map').getBoundingClientRect();return values.map(([lat,lng])=>{const p=map.latLngToContainerPoint([lat,lng]);return{x:rect.left+p.x,y:rect.top+p.y}})},points);
+  assert.ok(pixels.every(({x,y})=>x>=0&&y>=0&&x<1440&&y<1100),'rectangle drawing points are within the visible browser viewport: '+JSON.stringify(pixels));
   await page.mouse.move(pixels[0].x,pixels[0].y);await page.mouse.down();await page.mouse.move(pixels[1].x,pixels[1].y,{steps:4});await page.mouse.up();
  }
  async function dragRectangleInMap(x1,y1,x2,y2){
@@ -200,11 +202,8 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.2,dw=rainData.dlon*.2;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
+ await page.evaluate(({lat,lon})=>map.setView([lat,lon],10,{animate:false}),reference);
  await page.selectOption('#analysisAreaMode','rectangle');
- // Selecting the sidebar control can scroll the long dashboard down until the
- // map's mouse coordinates are outside the viewport. Keep real pointer drags
- // on the map at visible, non-negative screen coordinates.
- await page.evaluate(()=>window.scrollTo(0,0));
  await dragRectangle(reference.points);await applyArea();
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle');
  const rectangleStats=await page.evaluate(()=>({cells:rainSelection.cells.length,max:rainAnalysis.maxEvent?.value,mean:rainAnalysis.meanEvent}));
