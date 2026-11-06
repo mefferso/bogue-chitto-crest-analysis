@@ -16,7 +16,7 @@ button:disabled{opacity:.3}input[type=range]{width:100%;accent-color:#77dcff}
 #rainLegend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin-top:10px}
 #rainLegend .legend-item{display:flex;align-items:center;gap:7px}
 #rainLegend .swatch{width:22px;height:14px;border:1px solid #c6cdd7;border-radius:2px}
-.pin-label{background:#fff;color:#111827;border:1px solid #334155;border-radius:5px;padding:2px 5px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 5px #0006}
+.pin-label{background:#fff;color:#000;border:1px solid #000;border-radius:5px;padding:2px 5px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 5px #0006}
 .leaflet-tooltip.pin-label:before{display:none}
 .swatch{width:12px;height:12px;display:inline-block}.panel{margin:18px 0}
 a{color:#96d9ff}#status{font-weight:600;color:#f6c079}
@@ -156,7 +156,7 @@ const analysisAreaLayer=L.geoJSON(null,{pane:'analysisAreaApplied',style:{color:
 const analysisAreaLabel=L.layerGroup().addTo(map);
 const areaAnalysis=createRainfallAreaAnalysis();
 let analysisGeometry=null,analysisAreaName='Entire Event',analysisAreaType=null,rainSelection=null,crestSelection=null,rainAnalysis=null,crestAnalysis=null;
-const pinLayer=L.layerGroup().addTo(map),samples=[];
+const pinLayer=L.layerGroup().addTo(map),samples=[],pinMarkers=new Map();let nextPinId=0;
 function showAreaMessage(message=''){ $('analysisAreaMessage').textContent=message; }
 function setAnalysisArea(geometry,name,type=null){
  analysisGeometry=geometry;analysisAreaName=name||'Selected area';analysisAreaType=geometry?type:null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();
@@ -275,16 +275,16 @@ function rainfallInterval(mode,validUtc){
  return mode==='cumulative'?'event accumulation '+local(start)+' to '+local(validUtc):'rolling '+hours+'-hour ending '+local(validUtc);
 }
 function currentGrid(product=$('product').value){
- const swipe=$('product').value==='swipe';
+ const activeProduct=$('product').value,swipe=activeProduct==='swipe';
  if(product==='rainfall'){
    if(!rainData)return null;
-   const resolved=swipe?archiveTimeline.resolveRainfall(rainData.times,selectedUtc):{index:Number($('time').value),validUtc:rainData.times[Number($('time').value)]?.utc};
+   const resolved=activeProduct==='rainfall'?{index:Number($('time').value),validUtc:rainData.times[Number($('time').value)]?.utc}:archiveTimeline.resolveRainfall(rainData.times,selectedUtc);
    if(!resolved)return null;
    const mode=$('rainMode').value,frame=rainData.frames[mode]?.[resolved.index];
    return {dataset:rainData,frame,unit:'in',product,validUtc:resolved.validUtc,interval:rainfallInterval(mode,resolved.validUtc)};
  }
  if(product!=='crest'||!data)return null;
- const isEver=$('mode').value==='ever',resolved=swipe?archiveTimeline.resolveCrest(data.times,selectedUtc):{index:Number($('time').value),validUtc:data.times[Number($('time').value)]?.utc};
+ const isEver=$('mode').value==='ever',resolved=activeProduct==='crest'?{index:Number($('time').value),validUtc:data.times[Number($('time').value)]?.utc}:swipe?archiveTimeline.resolveCrest(data.times,selectedUtc):{index:archiveTimeline.nearest(data.times,selectedUtc),validUtc:data.times[archiveTimeline.nearest(data.times,selectedUtc)]?.utc};
  if(!isEver&&!resolved)return null;
  const index=resolved?.index;
  return {dataset:data,frame:isEver?data.ever_max:data.frames[index],unit:'cfs/mi²',product,validUtc:isEver?null:resolved.validUtc,interval:isEver?'event maximum at each pixel':null};
@@ -308,13 +308,16 @@ map.on('mousemove',event=>{
 });
 map.on('mouseout',()=>$('mapHoverValue').style.display='none');
 function updatePins(){
- pinLayer.clearLayers();
+ const active=new Set();
  for(let i=0;i<samples.length;i++){
-   const entry=samples[i],product=entry.product||$('product').value,v=sampleAt(entry,product),productName=product==='rainfall'?'MRMS Rainfall':'CREST Unit Streamflow';
-   const label=v?productName+' · '+fmt(v.value)+' '+v.unit+' · '+(v.interval?v.interval+' · ':'')+(v.validUtc?'valid '+local(v.validUtc):'event maximum'):'N/A · '+productName+' · unavailable at selected time';
-   const marker=L.circleMarker([entry.lat,entry.lng],{radius:6,color:'#101827',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(pinLayer);
-   marker.bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'pin-label'}).openTooltip();
+   const entry=samples[i],product=entry.product||$('product').value,v=sampleAt(entry,product);active.add(entry.id);
+   const label=v?fmt(v.value)+' '+(v.unit==='in'?'in.':v.unit):'N/A';
+   let marker=pinMarkers.get(entry.id);
+   if(!marker){marker=L.circleMarker([entry.lat,entry.lng],{radius:6,color:'#000',weight:2,fillColor:'#fff',fillOpacity:1}).addTo(pinLayer);marker.bindTooltip(label,{permanent:true,direction:'top',offset:[0,-5],className:'pin-label'});pinMarkers.set(entry.id,marker)}
+   else marker.setLatLng([entry.lat,entry.lng]);
+   marker.setTooltipContent(label);if(!marker.isTooltipOpen())marker.openTooltip();
  }
+ for(const [id,marker]of pinMarkers)if(!active.has(id)){marker.unbindTooltip();pinLayer.removeLayer(marker);pinMarkers.delete(id)}
  $('pinCount').textContent=samples.length+' pin'+(samples.length===1?'':'s');
 }
 map.on('click',e=>{
@@ -322,7 +325,7 @@ map.on('click',e=>{
  if($('analysisAreaMode').value==='basin')return;
  const product=$('product').value==='swipe'?(e.containerPoint.x<map.getSize().x*swipePosition/100?'rainfall':'crest'):$('product').value;
  if(!sampleAt(e.latlng,product))return;
- samples.push({lat:e.latlng.lat,lng:e.latlng.lng,product});updatePins();
+ samples.push({id:++nextPinId,lat:e.latlng.lat,lng:e.latlng.lng,product});updatePins();
 });
 $('clearPins').addEventListener('click',()=>{samples.length=0;updatePins()});
 const rainBins=[0,0.1,0.25,0.5,1,2,3,5,8,12];
@@ -535,7 +538,7 @@ async function selectEvent(event){
  data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
  rainSelection=null;crestSelection=null;rainAnalysis=null;crestAnalysis=null;
  areaDrawing.reset();basinOverlay.setSelectionMode(false);analysisGeometry=null;analysisAreaName='Entire Event';analysisAreaType=null;analysisAreaLayer.clearLayers();analysisAreaLabel.clearLayers();$('analysisAreaMode').value='entire';$('analysisAreaSummary').textContent='Entire Event · archived MRMS grid coverage';$('chartAreaName').textContent='Analysis area: Entire Event';$('analysisAreaDetails').textContent='Whole-grid maxima; means weight valid cell values by latitude-adjusted cell area.';$('analysisAreaMessage').textContent='';$('resetAnalysisArea').hidden=true;$('repeatAreaDraw').hidden=true;$('editAnalysisArea').hidden=true;
- samples.length=0;pinLayer.clearLayers();rainLayer.clearLayers();crestLayer.clearLayers();rainCellPool.clear();crestCellPool.clear();layer.clearLayers();
+ samples.length=0;updatePins();rainLayer.clearLayers();crestLayer.clearLayers();rainCellPool.clear();crestCellPool.clear();layer.clearLayers();
  $('archiveStatus').textContent='Loading event archive…';$('playbackLabel').textContent='—';
  $('status').textContent='Loading '+event.label+'…';$('status').style.color='#f6c079';
  $('eventHeading').textContent=event.name.replace(/, (LA|MS)$/,'')+' · Extreme Rainfall event';
