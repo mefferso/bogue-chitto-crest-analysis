@@ -202,6 +202,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
   const lat=rainData.latitudes[r],lon=rainData.longitudes[c],dh=rainData.dlat*.2,dw=rainData.dlon*.2;
   return {r,c,lat,lon,points:[[lat-dh,lon-dw],[lat+dh,lon+dw]],values:rainData.frames.cumulative.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null),one:rainData.frames.one_hour.map(frame=>frame?.[r]?.[c]).filter(v=>v!=null)}
  });
+ const originalDrawingView=await page.evaluate(()=>({center:map.getCenter().toArray(),zoom:map.getZoom()}));
  await page.evaluate(({lat,lon})=>{map.setView([lat,lon],10,{animate:false});return true},{lat:reference.lat,lon:reference.lon});
  await page.selectOption('#analysisAreaMode','rectangle');
  await dragRectangle(reference.points);await applyArea();
@@ -226,6 +227,8 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  await page.waitForFunction(()=>analysisAreaName==='Drawn rectangle'&&rainAnalysis.gridCells===0);
  assert.match(await page.textContent('#analysisAreaMessage'),/No archived rainfall grid cells/);
  await page.click('#resetAnalysisArea');await page.selectOption('#rainChartStatistic','maximum');assert.equal(await page.evaluate(()=>analysisGeometry),null);
+ await page.evaluate(view=>{map.setView(view.center,view.zoom,{animate:false});return true},originalDrawingView);
+ await page.evaluate(()=>window.scrollTo(0,0));
  assert.ok(basinRequests>=1,'independent basin-toggle checks exercised lazy asset loading');assert.equal(await page.isChecked('#drainageBasins'),false);
  assert.equal(await page.locator('#rainTimelinePanel').isVisible(),true);
  async function chartCursorUtc(){return await page.evaluate(()=>{const line=[...$('rainChart').querySelectorAll('line')].find(el=>el.getAttribute('stroke')==='#fff');if(!line)return null;const t0=Date.parse(rainData.times[0].utc),t1=Date.parse(rainData.times.at(-1).utc),x=Number(line.getAttribute('x1'));return new Date(t0+(x-66)/(1100-66-78)*(t1-t0)).toISOString()})}
