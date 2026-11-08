@@ -139,10 +139,12 @@ dragging, map movement, archive playback, and product-mode changes, using native
 grid times and the existing rainfall hold behavior. A missing value shows `—`.
 Rainfall and CREST have independent opacity controls and retain their existing display modes:
 event accumulation, rolling 1-hour, or rolling 3-hour rainfall; selected-time or
-event-maximum CREST. The two product legends retain inches and cfs/mi² units. CREST uses 14 ascending
-display bins (100, 200, 300, 400, 550, 700, 900, 1,200, 1,600,
-2,100, 2,800, 3,600, 4,700, 6,000+ cfs/mi²) with colors progressing from
-dark yellow through orange, red, pink, purple and blue to white. A compact
+event-maximum CREST. The two product legends retain inches and cfs/mi² units. CREST uses 11 ascending
+display thresholds (100, 200, 300, 400, 750, 1,000, 1,500, 2,000,
+3,000, 4,000, 5,000+ cfs/mi²). Colors follow dark yellow, yellow,
+bright yellow, orange, dark orange, dark blue, red, pink, pink-purple,
+purple and white at peak. Legend labels display threshold values only,
+rather than threshold ranges. A compact
 floating CREST legend is visible on the map in CREST and swipe modes, hidden
 in rainfall-only mode. The same bins appear in the sidebar; the underlying
 archived values and statistical thresholds are unchanged.
