@@ -13,6 +13,13 @@ aside{padding:20px;overflow:auto;border-right:1px solid #334154}#map{height:calc
 button,select{border:1px solid #7287a0;background:#283d59;color:#fff;border-radius:8px;padding:7px 10px;cursor:pointer}
 button:disabled{opacity:.3}input[type=range]{width:100%;accent-color:#77dcff}
 .legend{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+.crest-key-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:11px;font-variant-numeric:tabular-nums}
+.crest-key-item{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.crest-key-swatch{display:inline-block;width:13px;height:13px;flex:none;border:1px solid #657184;border-radius:2px}
+.crest-map-legend{background:#101a29ed;color:#f5f8ff;border:1px solid #506078;border-radius:9px;box-shadow:0 2px 14px #0008;padding:9px 11px;margin:0 10px 25px 0;max-width:calc(100vw - 24px)}
+.crest-map-legend[hidden]{display:none!important}
+.crest-key-title{font-size:12px;font-weight:750;margin:0 0 6px}
+.crest-key-note{font-size:10px;color:#d1d8e3;margin-top:6px}
 #rainLegend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin-top:10px}
 #rainLegend .legend-item{display:flex;align-items:center;gap:7px}
 #rainLegend .swatch{width:22px;height:14px;border:1px solid #c6cdd7;border-radius:2px}
@@ -85,7 +92,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div class="stat" id="crestEventPeak"><span>Event peak (county masked)</span><strong id="peak">—</strong><small id="peakTime">Not yet verified</small></div>
 <select id="product" aria-hidden="true" tabindex="-1" hidden><option value="crest">CREST Unit Streamflow</option><option value="rainfall">MRMS Rainfall</option><option value="swipe">Both — Swipe Comparison</option></select>
 <div class="panel" id="rainOpacityControl"><label for="rainOpacity">Rainfall opacity: <output id="rainOpacityValue" for="rainOpacity">85%</output></label><input id="rainOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Rainfall opacity"><small>Cells below 0.1 inch are not colored.</small></div>
-<div class="panel" id="crestOpacityControl"><label for="crestOpacity">CREST opacity: <output id="crestOpacityValue" for="crestOpacity">85%</output></label><input id="crestOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="CREST opacity"><small>Cells below 200 cfs/mi² are not colored.</small></div>
+<div class="panel" id="crestOpacityControl"><label for="crestOpacity">CREST opacity: <output id="crestOpacityValue" for="crestOpacity">85%</output></label><input id="crestOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="CREST opacity"><small>Cells below 100 cfs/mi² are not colored.</small></div>
 <input id="productOpacity" type="range" min="0" max="100" step="1" value="85" aria-label="Legacy product opacity" hidden>
 <div id="crestControls"><div class="panel"><label for="mode">Map layer</label>
 <select id="mode"><option value="frame">Selected 10-minute grid</option><option value="ever">Maximum at each pixel across event</option></select></div>
@@ -110,10 +117,28 @@ const map=L.map('map',{preferCanvas:true}).setView([30.69,-89.62],10);
 let activeEvent={id:'2026-10-31_pearl-river-ms',name:'Pearl River County, MS',label:'Oct 31, 2026 — Pearl River County, MS',start_utc:'2026-10-31T18:00:00Z',end_utc:'2026-11-01T12:00:00Z',data_dir:'data',products:{crest:true,rainfall:true}};
 const eventPath=file=>activeEvent.data_dir+'/'+file;
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-const colors=['#434958','#e6c800','#ff8d22','#ef4e59','#ae22bc','#142fce','#e8edf3'];
-const bins=[0,200,400,600,1000,2000,5000];
-function color(v){if(v===null || v===undefined)return null;let i=0;for(let k=0;k<bins.length;k++)if(v>=bins[k])i=k;return colors[i]}
-document.getElementById('legend').innerHTML=bins.map((b,i)=>'<span class="swatch" style="background:'+colors[i]+'"></span>'+b.toLocaleString()).join(' ');
+// Display-only classes; the archived CREST values and analysis thresholds are unchanged.
+const bins=[100,200,300,400,550,700,900,1200,1600,2100,2800,3600,4700,6000];
+const colors=['#b7a800','#d8c400','#f0cf2e','#f4ad32','#f58b2a','#ef6a2e','#e34a3a','#d9364d','#e24f7f','#db63b0','#bf56d8','#8c4fe3','#3f63e6','#ffffff'];
+function color(v){if(v===null||!Number.isFinite(v)||v<bins[0])return null;let i=0;for(let k=1;k<bins.length;k++){if(v<bins[k])break;i=k}return colors[i]}
+function crestKeyMarkup(){
+ return '<div class="crest-key-grid">'+bins.map((b,i)=>{
+  const label=b.toLocaleString('en-US')+(i===bins.length-1?'+':'–'+(bins[i+1]-1).toLocaleString('en-US'));
+  return '<div class="crest-key-item"><span class="crest-key-swatch" style="background:'+colors[i]+'"></span><span>'+label+'</span></div>';
+ }).join('')+'</div>';
+}
+document.getElementById('legend').innerHTML=crestKeyMarkup();
+const crestMapLegend=L.control({position:'bottomright'});
+crestMapLegend.onAdd=function(){
+ const div=L.DomUtil.create('div','crest-map-legend');
+ div.setAttribute('role','group');
+ div.setAttribute('aria-label','CREST unit streamflow color legend in cfs per square mile');
+ div.innerHTML='<div class="crest-key-title">CREST Unit Streamflow · cfs/mi²</div>'+crestKeyMarkup()+'<div class="crest-key-note">Below 100 not displayed · modeled values</div>';
+ L.DomEvent.disableClickPropagation(div);
+ L.DomEvent.disableScrollPropagation(div);
+ return div;
+};
+crestMapLegend.addTo(map);
 const $=id=>document.getElementById(id);
 const fmt=v=>v==null?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:1});
 const local=s=>new Date(s).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'});
@@ -406,6 +431,7 @@ function chooseProduct(){
  const mode=$('product').value,rain=mode!=='crest',crest=mode!=='rainfall',swipe=mode==='swipe';
  layer=rain?rainLayer:crestLayer;map.getPane('rainfallProduct').style.display=rain?'':'none';map.getPane('crestProduct').style.display=crest?'':'none';
  document.querySelectorAll('[name="productMode"]').forEach(control=>control.checked=control.value===mode);
+ crestMapLegend.getContainer().hidden=!crest;
  $('map').classList.toggle('swipe-mode',swipe);$('swipeDivider').hidden=!swipe;
  $('crestControls').hidden=!crest;$('rainControls').hidden=!rain;
  $('rainOpacityControl').hidden=!rain;$('crestOpacityControl').hidden=!crest;
@@ -442,7 +468,7 @@ function draw(){
  if(!data)return;
  const swipe=$('product').value==='swipe',ix=swipe?archiveTimeline.resolveCrest(data.times,selectedUtc)?.index:Number($('time').value),isEver=$('mode').value==='ever',raster=isEver?data.ever_max:ix==null?null:data.frames[ix];
  if($('product').value==='crest')layer=crestLayer;
- paintProductCells(crestLayer,crestCellPool,data,raster,{pane:'crestProduct',renderer:crestRenderer,threshold:bins[1],colorFor:color,opacity:Number($('crestOpacity').value)/100});
+ paintProductCells(crestLayer,crestCellPool,data,raster,{pane:'crestProduct',renderer:crestRenderer,threshold:bins[0],colorFor:color,opacity:Number($('crestOpacity').value)/100});
  if(!raster){$('currentPeak').textContent='—';$('areas').innerHTML='';$('crestMapLabel').textContent='CREST Unit Streamflow · no archive frame at '+local(selectedUtc);updatePins();return}
  if(ix!=null){$('timeLabel').textContent=local(data.times[ix].utc)+(isEver?' · map shows maximum over entire period':'');$('currentPeak').textContent=fmt(data.times[ix].max_cfs_mi2);$('areas').innerHTML=[600,1000,2000,5000].map(t=>'<tr><td>≥ '+fmt(t)+'</td><td>'+fmt(data.times[ix]['area_ge_'+t+'_sqmi'])+' mi²</td><td>'+fmt(data.summary.area_ever_sqmi[t])+' mi²</td></tr>').join('');if(!swipe)$('playbackLabel').textContent=local(data.times[ix].utc)+(isEver?' · cursor':'');}
  if(swipe)$('crestMapLabel').textContent=isEver?'CREST · event maximum at each pixel':`CREST Unit Streamflow · ${ix==null?'no matching model frame':local(data.times[ix].utc)}`;
