@@ -105,8 +105,8 @@ events, neighboring-parish coverage, product/time/mode/opacity changes, fixed HU
 display while zooming,
 real outline clicks, sampling pins, event switching and static-asset failures.
 
-Gray low-bin product cells are not drawn: rainfall below 0.1 inch and CREST below
-200 cfs/mi² leave the basemap visible. This is a display filter only; values,
+Low-bin product cells are not drawn: rainfall below 0.1 inch and CREST below
+100 cfs/mi² leave the basemap visible. This is a display filter only; values,
 statistics and sample calculations are unchanged. The opacity slider controls the
 remaining colored product cells.
 
@@ -139,7 +139,13 @@ dragging, map movement, archive playback, and product-mode changes, using native
 grid times and the existing rainfall hold behavior. A missing value shows `—`.
 Rainfall and CREST have independent opacity controls and retain their existing display modes:
 event accumulation, rolling 1-hour, or rolling 3-hour rainfall; selected-time or
-event-maximum CREST. The two product legends retain inches and cfs/mi² units.
+event-maximum CREST. The two product legends retain inches and cfs/mi² units. CREST uses 14 ascending
+display bins (100, 200, 300, 400, 550, 700, 900, 1,200, 1,600,
+2,100, 2,800, 3,600, 4,700, 6,000+ cfs/mi²) with colors progressing from
+dark yellow through orange, red, pink, purple and blue to white. A compact
+floating CREST legend is visible on the map in CREST and swipe modes, hidden
+in rainfall-only mode. The same bins appear in the sidebar; the underlying
+archived values and statistical thresholds are unchanged.
 Drainage boundaries, analysis drawings, applied geometry and map navigation stay
 above/below the clipped product panes and remain usable in comparison mode.
 
@@ -165,7 +171,7 @@ analysis-area statistics.
 
 The dashboard presents NOAA MRMS quantitative precipitation estimates and FLASH
 CREST **modeled unit streamflow**, not observed discharge. Rainfall below 0.1 inch
-and CREST below 200 cfs/mi² are hidden from the map only; analytical calculations
+and CREST below 100 cfs/mi² are hidden from the map only; analytical calculations
 and thresholds are unchanged. Neither product display implies flood severity.
 
 ### Browser regression checks
