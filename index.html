@@ -118,12 +118,12 @@ let activeEvent={id:'2026-10-31_pearl-river-ms',name:'Pearl River County, MS',la
 const eventPath=file=>activeEvent.data_dir+'/'+file;
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 // Display-only classes; the archived CREST values and analysis thresholds are unchanged.
-const bins=[100,200,300,400,550,700,900,1200,1600,2100,2800,3600,4700,6000];
-const colors=['#b7a800','#d8c400','#f0cf2e','#f4ad32','#f58b2a','#ef6a2e','#e34a3a','#d9364d','#e24f7f','#db63b0','#bf56d8','#8c4fe3','#3f63e6','#ffffff'];
+const bins=[100,200,300,400,750,1000,1500,2000,3000,4000,5000];
+const colors=['#b7a800','#e6c800','#ffed35','#f58b2a','#d95a1e','#142fce','#d9364d','#f05aa9','#bf56d8','#7633bb','#ffffff'];
 function color(v){if(v===null||!Number.isFinite(v)||v<bins[0])return null;let i=0;for(let k=1;k<bins.length;k++){if(v<bins[k])break;i=k}return colors[i]}
 function crestKeyMarkup(){
  return '<div class="crest-key-grid">'+bins.map((b,i)=>{
-  const label=b.toLocaleString('en-US')+(i===bins.length-1?'+':'–'+(bins[i+1]-1).toLocaleString('en-US'));
+  const label=b.toLocaleString('en-US')+(i===bins.length-1?'+':'');
   return '<div class="crest-key-item"><span class="crest-key-swatch" style="background:'+colors[i]+'"></span><span>'+label+'</span></div>';
  }).join('')+'</div>';
 }
