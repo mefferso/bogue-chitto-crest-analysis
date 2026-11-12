@@ -270,7 +270,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    for(const index of ['0','3','max']){
     await page.locator('#time').evaluate((el,ix)=>{el.value=ix==='max'?el.max:ix;el.dispatchEvent(new Event('input',{bubbles:true}));},index);
     const result=await page.evaluate(()=>{
-     const grid=currentGrid(),threshold=$('product').value==='rainfall'?0.1:200;
+     const grid=currentGrid(),threshold=$('product').value==='rainfall'?0.1:100;
      const expected=grid.frame?grid.frame.flat().filter(v=>v!==null&&v>=threshold).length:0;
      const visible=layer.getLayers().filter(cell=>cell._productVisible);return {expected,actual:visible.length,gray:visible.filter(cell=>['#a1aab5','#434958'].includes(cell.options.fillColor)).length};
     });
