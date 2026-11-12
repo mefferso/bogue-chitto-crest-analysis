@@ -7,9 +7,15 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1100},hasTouch:true});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let failAssets=false;let basinRequests=0;const basinAssetPaths=[];
+ let failAssets=false;let basinRequests=0;let warningRequests=0;const basinAssetPaths=[];
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());
+  if(url.hostname==='mesonet.agron.iastate.edu'&&url.pathname==='/geojson/sbw.geojson'){
+   warningRequests++;
+   const issue='2026-10-31T18:00:00Z',expire='2026-10-31T18:20:00Z';
+   const polygon={type:'Feature',geometry:{type:'Polygon',coordinates:[[[-89.7,30.6],[-89.6,30.6],[-89.6,30.7],[-89.7,30.6]]]},properties:{ps:'FF.W',issue,expire,wfo:'LIX'}};
+   return route.fulfill({contentType:'application/json',body:JSON.stringify({type:'FeatureCollection',features:[polygon]})});
+  }
   if(url.hostname==='basins.test'){
    const name=decodeURIComponent(url.pathname.slice(1))||'index.html';
    if(name==='data/events.json'){
@@ -40,6 +46,13 @@ const missingCrestUtc=gapRainSource.times[4].utc;
  });
  await page.goto('http://basins.test/?event=2026-10-31_pearl-river-ms');
  await page.waitForFunction(()=>rainData&&data&&document.querySelector('#status').textContent.includes('rainfall'));
+ await page.waitForFunction(()=>document.querySelector('#ffwStatus').textContent!=='Loading event warning history…');
+ assert.equal(await page.locator('#flashFloodWarnings').isChecked(),true,'historical warnings are on by default');
+ assert.equal(await page.evaluate(()=>{flashFloodOverlay.setTime('2026-10-31T18:00:00Z');return flashFloodOverlay.layer.getLayers().length}),1,'warning polygon displays at issuance');
+ assert.equal(await page.evaluate(()=>{flashFloodOverlay.setTime('2026-10-31T18:20:00Z');return flashFloodOverlay.layer.getLayers().length}),0,'warning polygon disappears exactly at expiration');
+ assert.equal(warningRequests,1,'archive scrubbing does not trigger new warning requests');
+ await page.evaluate(()=>flashFloodOverlay.setTime(selectedUtc));
+
  for(const mode of ['rainfall','crest','swipe']){
   const choice=page.locator(`[name="productMode"][value="${mode}"]`);
   assert.equal(await choice.isVisible(),true,`${mode} is a visible product choice`);
