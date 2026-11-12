@@ -1,0 +1,29 @@
+{
+  "id": "2026-10-31_pearl-river-county-ms",
+  "name": "Pearl River County, MS + surrounding parishes/counties",
+  "boundary_file": "data/events/2026-10-31_pearl-river-county-ms/boundary.geojson",
+  "boundary_mode": "county_and_neighbors",
+  "marine_zones": [],
+  "surrounding_counties": [
+    "28045",
+    "28073",
+    "28091",
+    "22103",
+    "22117",
+    "28035",
+    "28131"
+  ],
+  "label": "Oct 31, 2026 \u2014 Pearl River County, MS",
+  "start_utc": "2026-11-01T01:00:00+00:00",
+  "end_utc": "2026-11-01T08:00:00+00:00",
+  "data_dir": "data/events/2026-10-31_pearl-river-county-ms",
+  "products": {
+    "rainfall": true,
+    "crest": true
+  },
+  "status": {
+    "crest": "available"
+  },
+  "fips": "28109",
+  "land_boundary_file": "data/events/2026-10-31_pearl-river-county-ms/land-boundary.geojson"
+}
