@@ -7,6 +7,7 @@ on:
     paths:
       - 'scripts/**'
       - 'index.html'
+      - 'flash-flood-warnings.js'
       - 'analysis-area.js'
       - 'drainage-basins.js'
       - 'tests/**'
@@ -42,6 +43,8 @@ jobs:
           node --check drainage-basins.js
           node --check archive-timeline.js
           node tests/archive-timeline.test.cjs
+          node --check flash-flood-warnings.js
+          node tests/flash-flood-warnings.test.cjs
           node tests/analysis-area.test.cjs
           node --check analysis-area.js
       - name: Prepare browser validation dependencies
