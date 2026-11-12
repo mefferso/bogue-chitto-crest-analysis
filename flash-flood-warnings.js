@@ -1,93 +1,132 @@
-/* Historical NWS Flash Flood Warning polygons, independent of MRMS data.
- * Source: Iowa Environmental Mesonet (IEM) archive, queried for exact UTC time.
- * Archived warning snapshots are unofficial and may be incomplete.
+/* Historical NWS Flash Flood Warnings (Iowa Environmental Mesonet).
+ * One range request per selected event; all playback filtering happens locally.
+ * Data are independent of the archived MRMS rainfall/CREST calculations.
  */
 (function(global){
  'use strict';
+
+ const DATE_FIELDS={
+  begin:['polygon_begin','poly_beg','polygon_start','issue','issued','init_iss','start','start_time','valid_from'],
+  end:['polygon_end','poly_end','polygon_expire','expire','expired','end','end_time','valid_to']
+ };
+
+ function parseUtc(value){
+  if(value==null||value==='')return NaN;
+  if(typeof value==='number')return value>1e12?value:value>1e9?value*1000:NaN;
+  const s=String(value).trim();
+  // IEM shapefile timestamps use YYYYMMDDHHmm (always UTC).
+  if(/^\d{12}$/.test(s))return Date.parse(s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8)+'T'+s.slice(8,10)+':'+s.slice(10,12)+':00Z');
+  if(/^\d{14}$/.test(s))return Date.parse(s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8)+'T'+s.slice(8,10)+':'+s.slice(10,12)+':'+s.slice(12,14)+'Z');
+  if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s))return Date.parse(s.replace(' ','T')+(s.endsWith('Z')||/[+-]\d\d:?\d\d$/.test(s)?'':'Z'));
+  return Date.parse(s);
+ }
+ function firstTime(props,keys){
+  for(const key of keys){
+   const value=props[key]??props[key.toUpperCase()];
+   const time=parseUtc(value);
+   if(Number.isFinite(time))return time;
+  }
+  return NaN;
+ }
+ function isFlashFloodWarning(feature){
+  if(!feature||!feature.geometry||!['Polygon','MultiPolygon'].includes(feature.geometry.type))return false;
+  const p=feature.properties||{};
+  const ps=String(p.ps||p.PS||'').toUpperCase();
+  const phenom=String(p.phenomena||p.phenom||p.phen||p.PHENOM||'').toUpperCase();
+  const sig=String(p.significance||p.sig||p.SIG||'').toUpperCase();
+  return ps==='FF.W'||ps==='FFW'||(phenom==='FF'&&sig==='W');
+ }
+ function asTimedPolygon(feature){
+  if(!isFlashFloodWarning(feature))return null;
+  const p=feature.properties||{};
+  const begin=firstTime(p,DATE_FIELDS.begin),end=firstTime(p,DATE_FIELDS.end);
+  if(!Number.isFinite(begin)||!Number.isFinite(end)||end<=begin)return null;
+  return {feature,begin,end};
+ }
  function createFlashFloodWarnings({map,L,toggle,status}){
   map.createPane('flashFloodWarnings');
-  const pane=map.getPane('flashFloodWarnings');
-  pane.style.zIndex='460';
+  map.getPane('flashFloodWarnings').style.zIndex='460';
   const layer=L.geoJSON(null,{
    pane:'flashFloodWarnings',
    style:()=>({color:'#39ff63',weight:3,opacity:1,fillColor:'#33ed62',fillOpacity:0.075}),
    onEachFeature:(feature,polygon)=>{
-    const p=feature.properties||{};
-    const container=document.createElement('div');
-    const title=document.createElement('strong');
-    title.textContent='Flash Flood Warning';
-    container.append(title);
-    const details=[
-     p.wfo||p.office?('WFO: '+(p.wfo||p.office)):null,
-     p.etn||p.eventid?('Event: '+(p.etn||p.eventid)):null,
-     p.issue||p.issued?('Issued: '+(p.issue||p.issued)):null,
-     p.expire||p.expired?('Expires: '+(p.expire||p.expired)):null
-    ].filter(Boolean);
-    details.forEach(item=>{const line=document.createElement('div');line.textContent=item;container.append(line)});
+    const p=feature.properties||{},container=document.createElement('div');
+    const heading=document.createElement('strong');heading.textContent='Flash Flood Warning';container.append(heading);
+    const items=[
+     ['WFO',p.wfo||p.WFO||p.office],
+     ['Event',p.etn||p.ETN||p.eventid],
+     ['Valid from',p.polygon_begin||p.poly_beg||p.issue||p.issued],
+     ['Valid until',p.polygon_end||p.poly_end||p.expire||p.expired]
+    ];
+    for(const [label,value] of items){
+     if(value==null||value==='')continue;
+     const line=document.createElement('div');line.textContent=label+': '+value;container.append(line);
+    }
     polygon.bindPopup(container);
    }
   }).addTo(map);
-  let currentEvent=null,version=0,timer=null,controller=null;
-  const cache=new Map();
-  function clearPending(){
-   if(timer!==null){clearTimeout(timer);timer=null}
-   if(controller){controller.abort();controller=null}
-  }
+  let currentEvent=null,eventVersion=0,controller=null,selectedTime=null,records=null,problem=null;
+  let lastDisplayedTime=null;
+
   function setStatus(message){status.textContent=message}
-  function reset(event){
-   ++version;clearPending();layer.clearLayers();cache.clear();currentEvent=event||null;
-   setStatus(toggle.checked?'Waiting for archive time':'Off');
-  }
-  function validWarning(feature){
-   if(!feature||!feature.geometry||!['Polygon','MultiPolygon'].includes(feature.geometry.type))return false;
-   const p=feature.properties||{};
-   const ps=String(p.ps||'').toUpperCase();
-   const phenom=String(p.phenomena||p.phenom||p.phen||'').toUpperCase();
-   const sig=String(p.significance||p.sig||'').toUpperCase();
-   return ps==='FF.W'||ps==='FFW'||(phenom==='FF'&&(sig==='W'||!sig));
-  }
-  function draw(features,utc){
+  function render(){
+   if(!toggle.checked){layer.clearLayers();setStatus('Off');return}
+   if(!currentEvent||!Number.isFinite(selectedTime)){layer.clearLayers();setStatus('Waiting for archive time');return}
+   if(problem){layer.clearLayers();setStatus(problem);return}
+   if(records===null){layer.clearLayers();setStatus('Loading event warning history…');return}
+   if(lastDisplayedTime===selectedTime)return;
    layer.clearLayers();
-   if(!toggle.checked)return;
-   const valid=features.filter(validWarning);
-   if(valid.length)layer.addData({type:'FeatureCollection',features:valid});
-   setStatus(valid.length?valid.length+' active at '+new Date(utc).toLocaleTimeString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'No active Flash Flood Warnings');
+   const active=records.filter(item=>item.begin<=selectedTime&&selectedTime<item.end);
+   if(active.length)layer.addData({type:'FeatureCollection',features:active.map(item=>item.feature)});
+   lastDisplayedTime=selectedTime;
+   setStatus(active.length?active.length+' active Flash Flood Warning'+(active.length===1?'':'s'):'No active Flash Flood Warnings');
   }
-  async function fetchWarnings(utc,requestVersion){
-   const abort=new AbortController();controller=abort;
-   try{
-    const url=new URL('https://mesonet.agron.iastate.edu/geojson/sbw.geojson');
-    url.searchParams.set('ts',utc);
-    url.searchParams.set('states','LA,MS');
-    const response=await fetch(url.toString(),{signal:abort.signal});
+  function setTime(utc){
+   const parsed=parseUtc(utc);
+   selectedTime=Number.isFinite(parsed)?parsed:null;
+   render();
+  }
+  function reset(event){
+   ++eventVersion;
+   if(controller){controller.abort();controller=null}
+   currentEvent=event||null;records=null;problem=null;lastDisplayedTime=null;
+   selectedTime=null;layer.clearLayers();
+   render();
+   if(!event)return;
+   const start=parseUtc(event.start_utc),end=parseUtc(event.end_utc);
+   if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start){
+    problem='Warning event window unavailable';render();return;
+   }
+   const url=new URL('https://mesonet.agron.iastate.edu/geojson/sbw.geojson');
+   url.searchParams.set('sts',new Date(start).toISOString());
+   url.searchParams.set('ets',new Date(end).toISOString());
+   url.searchParams.set('states','LA,MS');
+   const requestVersion=eventVersion,abort=new AbortController();
+   controller=abort;
+   fetch(url.toString(),{signal:abort.signal}).then(async response=>{
     if(!response.ok)throw Error('IEM HTTP '+response.status);
     const geo=await response.json();
     if(!geo||!Array.isArray(geo.features))throw Error('Invalid IEM GeoJSON');
-    if(requestVersion!==version||!toggle.checked)return;
-    cache.set(utc,geo.features);
-    if(cache.size>300)cache.delete(cache.keys().next().value);
-    draw(geo.features,utc);
-   }catch(error){
-    if(requestVersion!==version||error.name==='AbortError')return;
-    layer.clearLayers();
-    setStatus('Archived warnings unavailable');
-    console.warn('IEM Flash Flood Warning lookup failed',error);
-   }finally{if(controller===abort)controller=null}
+    if(requestVersion!==eventVersion)return;
+    const matches=geo.features.filter(isFlashFloodWarning);
+    const parsed=matches.map(asTimedPolygon).filter(Boolean);
+    // Never present a false 'no warnings' when archived features lack timing metadata.
+    if(matches.length&&parsed.length!==matches.length){
+     throw Error('Unrecognized or missing IEM polygon validity times');
+    }
+    records=parsed;
+    lastDisplayedTime=null;
+    render();
+   }).catch(error=>{
+    if(requestVersion!==eventVersion||error.name==='AbortError')return;
+    problem='Archived warnings unavailable';
+    console.warn('IEM Flash Flood Warning event download failed',error);
+    render();
+   }).finally(()=>{if(controller===abort)controller=null});
   }
-  function setTime(utc){
-   ++version;clearPending();layer.clearLayers();
-   if(!toggle.checked){setStatus('Off');return}
-   if(!currentEvent||!utc||!Number.isFinite(Date.parse(utc))){setStatus('Waiting for archive time');return}
-   if(cache.has(utc)){draw(cache.get(utc),utc);return}
-   setStatus('Loading historical warnings…');
-   const requestVersion=version;
-   timer=setTimeout(()=>{timer=null;fetchWarnings(utc,requestVersion)},90);
-  }
-  toggle.addEventListener('change',()=>{
-   if(!toggle.checked){++version;clearPending();layer.clearLayers();setStatus('Off')}
-   else setTime(global.__flashFloodArchiveTime?.()||null);
-  });
+  toggle.addEventListener('change',()=>{lastDisplayedTime=null;render()});
   return {reset,setTime,layer};
  }
  global.createFlashFloodWarnings=createFlashFloodWarnings;
+ global.__flashFloodWarningInternals={parseUtc,asTimedPolygon,isFlashFloodWarning};
 })(window);
