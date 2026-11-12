@@ -47,6 +47,29 @@ jobs:
           node tests/flash-flood-warnings.test.cjs
           node tests/analysis-area.test.cjs
           node --check analysis-area.js
+      - name: Inspect live IEM historical warning response
+        run: |
+          python - <<'PY'
+          import requests
+          url='https://mesonet.agron.iastate.edu/geojson/sbw.geojson'
+          params={'sts':'2026-10-31T18:00:00Z','ets':'2026-11-01T12:00:00Z','states':'LA,MS'}
+          try:
+              response=requests.get(url,params=params,timeout=20)
+              print('IEM response HTTP status:',response.status_code,'bytes:',len(response.content))
+              response.raise_for_status()
+              payload=response.json()
+              features=payload.get('features',[])
+              warnings=[f for f in features if f.get('properties',{}).get('ps')=='FF.W']
+              print('Archive polygon count:',len(features),'FF.W count:',len(warnings))
+              if features:
+                  print('Example feature property names:',sorted(features[0].get('properties',{})))
+                  print('Example feature properties:',features[0].get('properties',{}))
+              if warnings:
+                  print('FF.W example property names:',sorted(warnings[0].get('properties',{})))
+                  print('FF.W example properties:',warnings[0].get('properties',{}))
+          except Exception as error:
+              print('LIVE IEM CONTRACT CHECK UNAVAILABLE:',type(error).__name__,str(error))
+          PY
       - name: Prepare browser validation dependencies
         timeout-minutes: 5
         run: |
