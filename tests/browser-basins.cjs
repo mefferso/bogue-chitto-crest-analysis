@@ -69,7 +69,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    const wetIndex=await page.evaluate(()=>activeTimes().findIndex(({utc})=>{const r=archiveTimeline.resolveRainfall(rainData.times,utc),c=archiveTimeline.resolveCrest(data.times,utc);return r&&c&&rainData.frames.cumulative[r.index]?.flat().some(v=>v>=.1)&&data.frames[c.index]?.flat().some(v=>v>=200)}));
    assert.ok(wetIndex>=0,'fixture has a native time with colored frames in both products');
    await page.evaluate(index=>{selectedUtc=activeTimes()[index].utc;$('time').value=index;drawRain();draw()},wetIndex);
-   const viewBeforePan=await page.evaluate(()=>{const center=map.getCenter();return{center:[center.lat,center.lng],zoom:map.getZoom()}}),startX=mapBox.x+mapBox.width*.88,startY=mapBox.y+mapBox.height*.8;
+   const viewBeforePan=await page.evaluate(()=>{const center=map.getCenter();return{center:[center.lat,center.lng],zoom:map.getZoom()}}),freshMapBox=await page.locator('#map').boundingBox(),startX=freshMapBox.x+freshMapBox.width*.88,startY=freshMapBox.y+freshMapBox.height*.8;
    await page.mouse.move(startX,startY);await page.mouse.down();await page.mouse.move(startX-45,startY-35,{steps:5});await page.mouse.up();
    await page.waitForFunction(()=>!map._animatingZoom&&!map._panAnim?._inProgress);
    assert.notDeepEqual(await page.evaluate(()=>{const center=map.getCenter();return[center.lat,center.lng]}),viewBeforePan.center,'real mouse pan changes the shared map view');
