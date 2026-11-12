@@ -76,6 +76,7 @@ const missingCrestUtc=gapRainSource.times[4].utc;
    await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:touchBox.x+touchBox.width*.62,y:touchStart.y,radiusX:8,radiusY:8,force:1}]});
    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    assert.ok(Math.abs(Number(await page.locator('#swipeDivider').getAttribute('aria-valuenow'))-62)<2,'touch drag moves the divider: '+await page.locator('#swipeDivider').getAttribute('aria-valuenow'));await touch.detach();
+   await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});
    assert.equal(await page.evaluate(()=>samples.length),pinsBeforeSwipeHandle,'swipe-handle mouse/touch/keyboard interaction does not drop sample pins');
    for(let i=0;i<6;i++)await page.keyboard.press('ArrowLeft');
    await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile layout has no horizontal page overflow');await page.setViewportSize({width:1440,height:1100});
