@@ -64,6 +64,9 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 .drainage-basin-line{pointer-events:stroke!important}
 #map.basin-selection-active .drainage-basin-line{pointer-events:all!important;cursor:pointer}
 #basinStatus,.basin-note{display:block;margin-top:6px}
+.ffw-control{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px}
+.ffw-control input{accent-color:#39ff63}
+#ffwStatus{font-size:11px;color:#bfccdd}
 .basin-name{background:transparent;border:0;box-shadow:none;color:#ecfffb;font-size:11px;font-weight:600;line-height:1.2;text-align:center;white-space:normal;width:max-content;max-width:140px;padding:2px 3px;pointer-events:none!important;text-shadow:-1px -1px 0 #101827,1px -1px 0 #101827,-1px 1px 0 #101827,1px 1px 0 #101827,0 0 4px #101827}
 .basin-name:before{display:none}
 .analysis-area-line{pointer-events:none!important}
@@ -104,7 +107,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div class="panel"><b>CREST Unit Streamflow (cfs/mi²)</b><div id="legend" class="legend"></div></div>
 </div><div class="panel"><b>Map samples</b><p style="margin:6px 0">Left-click a colored cell to drop a value pin. Pins update with the selected map and time.</p><button id="clearPins" type="button">Clear all pins</button> <small id="pinCount">0 pins</small></div><p>Hover over a pixel to inspect the modeled value. Colors are analytical bins, not an AWIPS color table.</p>
 <p><a href="https://github.com/mefferso/bogue-chitto-crest-analysis">Source and methodology</a> · <a href="data/summary.json">Summary JSON</a> · <a href="data/timeseries.csv">Time series CSV</a></p>
-</aside><section id="vizColumn"><div id="mapControlBar" aria-label="Map display controls"><div id="productModes" class="product-choices" role="radiogroup" aria-label="Map product"><label><input type="radio" name="productMode" value="rainfall">MRMS Rainfall</label><label><input type="radio" name="productMode" value="crest" checked>CREST Unit Streamflow</label><label><input type="radio" name="productMode" value="swipe">Both — Swipe Comparison</label></div><div class="basin-control"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><button id="basinInfo" class="basin-info" type="button" aria-label="About drainage basins" aria-expanded="false" aria-controls="basinHelp">i</button><small id="basinStatus" role="status" aria-live="polite">Off</small><div id="basinHelp" hidden>USGS WBD HUC10 watersheds and names remain visible at every zoom. Click an outline for its name and HUC. HUC10 watersheds are not necessarily RFC forecast basins or exact upstream contributing areas to river points.</div></div></div>
+</aside><section id="vizColumn"><div id="mapControlBar" aria-label="Map display controls"><div id="productModes" class="product-choices" role="radiogroup" aria-label="Map product"><label><input type="radio" name="productMode" value="rainfall">MRMS Rainfall</label><label><input type="radio" name="productMode" value="crest" checked>CREST Unit Streamflow</label><label><input type="radio" name="productMode" value="swipe">Both — Swipe Comparison</label></div><div class="ffw-control"><label><input id="flashFloodWarnings" type="checkbox" checked> Flash Flood Warnings</label><small id="ffwStatus" role="status" aria-live="polite">Waiting for archive</small></div><div class="basin-control"><label><input id="drainageBasins" type="checkbox"> Drainage Basins</label><button id="basinInfo" class="basin-info" type="button" aria-label="About drainage basins" aria-expanded="false" aria-controls="basinHelp">i</button><small id="basinStatus" role="status" aria-live="polite">Off</small><div id="basinHelp" hidden>USGS WBD HUC10 watersheds and names remain visible at every zoom. Click an outline for its name and HUC. HUC10 watersheds are not necessarily RFC forecast basins or exact upstream contributing areas to river points.</div></div></div>
 <div id="map" aria-label="Interactive rainfall and CREST map"><div id="rainMapLabel" class="map-product-label">MRMS Rainfall</div><div id="crestMapLabel" class="map-product-label">CREST Unit Streamflow</div><div id="mapHoverValue"></div><div id="swipeDivider" class="swipe-divider" role="slider" tabindex="0" aria-label="Swipe comparison divider" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" data-position="50"></div></div>
 <div id="playbackBar" aria-label="Historical archive playback"><button id="playPause" type="button" aria-label="Play archive">▶ Play</button><button id="prev" type="button" aria-label="Previous timestamp">◀ Previous</button><button id="next" type="button" aria-label="Next timestamp">Next ▶</button><label>Speed <select id="playbackSpeed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label><label><input id="playbackLoop" type="checkbox" checked> Loop</label><div class="time-range"><label for="time">Archive time (Central)</label><span id="playbackLabel">—</span><input id="time" type="range" min="0" max="0" value="0" disabled></div><div id="archiveStatus" role="status" aria-live="polite">Waiting for archive</div><span id="timeLabel" hidden>—</span></div>
 <div id="areaDrawingToolbar" class="area-drawing-toolbar" hidden role="toolbar" aria-label="Analysis area drawing controls"><button id="finishAreaPolygon" type="button" hidden>Finish Polygon</button><button id="undoAreaPoint" type="button" hidden>Undo Last Point</button><button id="removeAreaVertex" type="button" hidden>Remove Vertex</button><button id="cancelAreaDrawing" type="button" hidden>Cancel</button><button id="cancelAreaChanges" type="button" hidden>Cancel Changes</button><button id="applyAreaDrawing" type="button" hidden>Apply Analysis</button><small id="areaDrawingHint" aria-live="polite"></small></div><section id="rainTimelinePanel" aria-label="Rainfall and CREST time series">
@@ -112,7 +115,7 @@ td,th{padding:7px;border-bottom:1px solid #3b4960;text-align:right}th:first-chil
 <div id="rainChartMessage" role="status" aria-live="polite">Loading MRMS rainfall timeline…</div><div id="rainChart" aria-label="Interactive rainfall time series"></div><div class="legend timeline-legend"><span style="color:#56caff">● Event cumulative</span><span style="color:#f3b843">● 1-hour</span><span style="color:#ed71bd">● 3-hour</span><span id="crestLegend" hidden style="color:#a0e28b">● Modeled maximum CREST unit streamflow in selected area (cfs/mi²)</span></div>
 <div id="chartReadout" aria-live="polite">Hover or select a time to examine the rainfall evolution.</div>
 </section></section></main>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="analysis-area.js"></script><script src="analysis-area-drawing.js"></script><script src="drainage-basins.js"></script><script src="archive-timeline.js"></script><script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="analysis-area.js"></script><script src="analysis-area-drawing.js"></script><script src="drainage-basins.js"></script><script src="archive-timeline.js"></script><script src="flash-flood-warnings.js"></script><script>
 const map=L.map('map',{preferCanvas:true}).setView([30.69,-89.62],10);
 let activeEvent={id:'2026-10-31_pearl-river-ms',name:'Pearl River County, MS',label:'Oct 31, 2026 — Pearl River County, MS',start_utc:'2026-10-31T18:00:00Z',end_utc:'2026-11-01T12:00:00Z',data_dir:'data',products:{crest:true,rainfall:true}};
 const eventPath=file=>activeEvent.data_dir+'/'+file;
@@ -149,6 +152,8 @@ const rainRenderer=L.canvas({pane:'rainfallProduct',padding:.5}).addTo(map),cres
 let data,layer=L.layerGroup().addTo(map),rainLayer=L.layerGroup().addTo(map),crestLayer=L.layerGroup().addTo(map);
 const rainCellPool=new Map(),crestCellPool=new Map();
 let rainData=null,rainLoading=false,eventGeneration=0,selectedUtc=null;
+window.__flashFloodArchiveTime=()=>selectedUtc;
+const flashFloodOverlay=createFlashFloodWarnings({map,L,toggle:$('flashFloodWarnings'),status:$('ffwStatus')});
 let swipePosition=50;
 let refreshPinLabels=()=>{};
 function updateSwipeClip(){
@@ -273,9 +278,10 @@ function syncSliderToProduct(){
 }
 function renderSelectedTime(){
  const times=activeTimes();
- if(!times?.length){pausePlayback();$('archiveStatus').textContent='Historical archive unavailable';$('playbackLabel').textContent='—';return false}
+ if(!times?.length){flashFloodOverlay.setTime(null);pausePlayback();$('archiveStatus').textContent='Historical archive unavailable';$('playbackLabel').textContent='—';return false}
  let index=Math.max(0,Math.min(times.length-1,Number($('time').value)||0));
  selectedUtc=times[index].utc;$('time').max=times.length-1;$('time').value=index;
+ flashFloodOverlay.setTime(selectedUtc);
  $('playbackLabel').textContent=local(selectedUtc)+' · selected archive time';$('prev').disabled=index===0;$('next').disabled=index===times.length-1;
  const mode=$('product').value;
  if(mode==='rainfall'){drawRain()}
@@ -562,6 +568,7 @@ async function selectEvent(event){
  pausePlayback();
  const selectionGeneration=++eventGeneration;
  activeEvent=event;
+ flashFloodOverlay.reset(event);
  const hasRain=event.products?.rainfall!==false,hasCrest=event.products?.crest!==false&&event.status?.crest!=='unavailable';
  data=null;rainData=null;rainLoading=false;selectedUtc=null;chartHoverIndex=null;
  rainSelection=null;crestSelection=null;rainAnalysis=null;crestAnalysis=null;
