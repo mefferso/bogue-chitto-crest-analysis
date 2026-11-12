@@ -59,7 +59,7 @@ jobs:
               response.raise_for_status()
               payload=response.json()
               features=payload.get('features',[])
-              warnings=[f for f in features if f.get('properties',{}).get('ps')=='FF.W']
+              warnings=[f for f in features if f.get('properties',{}).get('phenomena')=='FF' and f.get('properties',{}).get('significance')=='W']
               print('Archive polygon count:',len(features),'FF.W count:',len(warnings))
               if features:
                   print('Example feature property names:',sorted(features[0].get('properties',{})))
