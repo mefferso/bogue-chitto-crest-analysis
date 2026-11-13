@@ -10,6 +10,18 @@ LEGACY={"id":"2026-10-31_pearl-river-ms","label":"Oct 31, 2026 — Pearl River C
 "name":"Pearl River County, MS","start_utc":"2026-10-31T18:00:00Z",
 "end_utc":"2026-11-01T12:00:00Z","data_dir":"data","products":{"crest":True,"rainfall":True}}
 CENTRAL=ZoneInfo("America/Chicago")
+# Known inland county with no directly adjoining NWS coastal marine forecast zone.
+# Keep boundary.generate's strict no-marine-zone failure for every other county:
+# an empty marine response in an otherwise coastal area must not silently downgrade.
+INLAND_NO_MARINE_FIPS={"28109"}  # Pearl River County, Mississippi
+
+def marine_for_event(fips,requested):
+    if requested and fips in INLAND_NO_MARINE_FIPS:
+        print(f"NOTICE: Adjacent coastal marine zones requested for inland county FIPS {fips}; "
+              "none adjoin this county. Proceeding with land and selected neighboring counties only.",
+              file=sys.stderr)
+        return False
+    return requested
 
 def read_index():
     if not INDEX.exists(): return {"events":[LEGACY]}
@@ -46,7 +58,7 @@ def prepare():
         raise ValueError("Event already exists: use overwrite=true explicitly")
     out.mkdir(parents=True,exist_ok=True)
     from boundary import generate
-    marine=os.environ.get("EVENT_INCLUDE_MARINE","false").lower()=="true"
+    marine=marine_for_event(fips,os.environ.get("EVENT_INCLUDE_MARINE","false").lower()=="true")
     neighbors=os.environ.get("EVENT_INCLUDE_NEIGHBORS","false").lower()=="true"
     geometry=generate(fips,out/"boundary.geojson",marine=marine,neighbors=neighbors)
     print(f"Boundary created: {geometry['properties']['mode']}; zones: {geometry['properties']['marine_zones']}",file=sys.stderr)
